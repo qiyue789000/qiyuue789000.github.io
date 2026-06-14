@@ -3,6 +3,8 @@ import { Dungeon } from './dungeon.js';
 import { spawnEnemiesForRoom } from './enemy.js';
 import { calcDamage, updateProjectile, inAttackRange } from './combat.js';
 import { generateDrop, generateItem, createHpPotion } from './items.js';
+import { ProfileManager } from './profile.js';
+import { ChatService } from './chat.js';
 import { Renderer } from './renderer.js';
 import { ParticleSystem, RingParticle } from './particles.js';
 import { UI } from './ui.js';
@@ -68,6 +70,15 @@ class Game {
         this.tutorialActive = false;
         this.currentRoom = null;
 
+        // Stats tracking
+        this.enemiesKilledCount = 0;
+        this.bossesKilledCount = 0;
+        this.playTime = 0;
+
+        // Social
+        this.profile = null;
+        this.chat = null;
+
         // Timing
         this.lastTime = performance.now();
         this.fps = 60;
@@ -108,6 +119,20 @@ class Game {
         this.ui.hideGameOver();
         this.ui.setPlayerRef(this.player);
         this.ui.showFloorIndicator(1);
+
+        // Social: profile & chat
+        if (!this.profile) {
+            this.profile = new ProfileManager('');
+            this.chat = new ChatService('冒险者');
+            this.ui.setProfileManager(this.profile);
+            this.ui.setChatService(this.chat);
+        }
+        this.profile.startRun(classId);
+        this.enemiesKilledCount = 0;
+        this.bossesKilledCount = 0;
+        this.playTime = 0;
+        const classDef = this.player.classDef;
+        this.chat.sendSystem('class_select', { className: classDef ? classDef.name : '冒险者' });
 
         // Give starter weapon and a health potion
         this.player.equipItem(generateItem(1, 'weapon'));
@@ -157,6 +182,7 @@ class Game {
 
     update(dt) {
         if (this.tutorialActive) return;
+        this.playTime += dt;
         // Update input world coords
         this.input.update(this.renderer.camera);
 
@@ -265,6 +291,7 @@ class Game {
                     }
                     if (this.player.isDead) {
                         this.gameOver = true;
+                        this._endGame('敌人');
                         this.ui.showGameOver(this.player, this.dungeon);
                         this.particles.emitDeath(this.player.x, this.player.y, '#e74c3c');
                     }
@@ -299,6 +326,7 @@ class Game {
                 p.active = false;
                 if (this.player.isDead) {
                     this.gameOver = true;
+                    this._endGame('投射物');
                     this.ui.showGameOver(this.player, this.dungeon);
                     this.particles.emitDeath(this.player.x, this.player.y, '#e74c3c');
                 }
@@ -585,9 +613,12 @@ class Game {
 
     onEnemyKilled(enemy) {
         this.particles.emitDeath(enemy.x, enemy.y, enemy.color);
+        this.enemiesKilledCount++;
 
         // Boss death special effects
         if (enemy.isBoss) {
+            this.bossesKilledCount++;
+            if (this.chat) this.chat.sendSystem('boss_kill', {});
             this.renderer.screenShake(12, 0.6);
             this.renderer.flashScreen('#fff', 0.15);
             this.particles.emit(enemy.x, enemy.y, 60, {
@@ -612,6 +643,7 @@ class Game {
             this.particles.emitLevelUp(this.player.x, this.player.y);
             this.renderer.screenShake(4, 0.3);
             this.ui.showLevelUp(this.player.level);
+            if (this.chat) this.chat.sendSystem('level_up', { level: this.player.level });
         }
 
         // Drop items
@@ -619,6 +651,9 @@ class Game {
         this.player.gold += drop.gold;
         for (const item of drop.items) {
             this.groundItems.push({ x: enemy.x + (Math.random() - 0.5) * 40, y: enemy.y + (Math.random() - 0.5) * 40, item });
+            if (item.rarity === 'LEGENDARY' && this.chat) {
+                this.chat.sendSystem('legendary', { itemName: item.name });
+            }
         }
 
         // Check room cleared
@@ -634,7 +669,44 @@ class Game {
         this.enemies = this.enemies.filter(e => e !== enemy);
     }
 
+    _endGame(cause) {
+        if (this.profile) {
+            this.profile.updateRun({
+                level: this.player.level,
+                floor: this.dungeon.floor,
+                gold: this.player.gold,
+                playTime: this.playTime,
+                enemiesKilled: this.enemiesKilledCount,
+                bossesKilled: this.bossesKilledCount,
+                skills: this.player.skills.map(s => s.name),
+                epicCount: Object.values(this.player.equipment).filter(e => e && e.rarity === 'EPIC').length
+            });
+            const newAchs = this.profile.endRun(cause);
+            if (this.chat) {
+                this.chat.sendSystem('death', { floor: this.dungeon.floor, level: this.player.level });
+                if (newAchs && newAchs.length > 0) {
+                    for (const ach of newAchs) {
+                        this.chat.sendSystem('achievement', { name: ach.name });
+                    }
+                }
+            }
+        }
+    }
+
     nextFloor() {
+        // Update profile before floor transition
+        if (this.profile) {
+            this.profile.updateRun({
+                level: this.player.level,
+                floor: this.dungeon.floor,
+                gold: this.player.gold,
+                playTime: this.playTime,
+                enemiesKilled: this.enemiesKilledCount,
+                bossesKilled: this.bossesKilledCount,
+                skills: this.player.skills.map(s => s.name)
+            });
+        }
+        if (this.chat) this.chat.sendSystem('floor', { floor: this.dungeon.floor + 1 });
         const nextFloor = this.dungeon.floor + 1;
         this.dungeon = new Dungeon(nextFloor);
         const startPos = this.dungeon.startRoom.randomPosition;

@@ -1,6 +1,8 @@
 import { SLOTS, SLOT_NAMES, SLOT_ICONS } from './items.js';
 import { generateItem, rollRarity, createHpPotion, createMpPotion } from './items.js';
 import { CLASS_DEFINITIONS, ALL_CLASS_IDS } from './classes.js';
+import { ProfileManager } from './profile.js';
+import { ChatService } from './chat.js';
 
 const SKILL_KEYS = ['B', 'N', 'M'];
 
@@ -17,9 +19,20 @@ export class UI {
         this.floorIndicatorTimeout = null;
         this._player = null;
         this._hudFrameSkip = 0;
+        this._profile = null;
+        this._chat = null;
+
+        // Profile & Chat panels
+        this.profilePanel = document.getElementById('profile-panel');
+        this.chatPanel = document.getElementById('chat-panel');
 
         document.addEventListener('keydown', (e) => {
             if (e.code === 'KeyI') this.toggleInventory();
+            if (e.code === 'KeyP') this.toggleProfile();
+            if (e.code === 'Enter' && !e.target.closest('#chat-input')) {
+                e.preventDefault();
+                this.toggleChat();
+            }
             if (e.code === 'Escape') { this.hideInventory(); this.hideShop(); }
         });
     }
@@ -84,7 +97,7 @@ export class UI {
             </div>
             ${passivesHtml ? `<div style="margin-top:1px;">${passivesHtml}</div>` : ''}
             <div style="font-size:9px;color:#444;margin-top:1px;">
-                [WASD]移动 [鼠标左键]攻击 [空格]翻滚 [Q]药水 [I]背包 [B/N/M]技能 [E]互动
+                [WASD]移动 [鼠标]攻击 [空格]闪避 [Q]药水 [I]包 [B/N/M]技 [E]店 [P]档案 [回车]聊
             </div>
             ${currentRoom && currentRoom.type === 'shop' ? '<div style="font-size:13px;color:#f1c40f;margin-top:3px;animation:pulse 1s infinite;">🏪 按 [E] 打开商店</div>' : ''}
         `;
@@ -368,6 +381,118 @@ export class UI {
 
     _calcSellPrice(item) {
         return Math.floor(this._calcBuyPrice(item) * 0.4);
+    }
+
+    setProfileManager(profile) { this._profile = profile; }
+    setChatService(chat) { this._chat = chat; }
+
+    // ─── Profile Panel ─────────────────────────────
+    toggleProfile() {
+        if (this.profilePanel.classList.contains('active')) {
+            this.hideProfile();
+        } else {
+            this.showProfile();
+        }
+    }
+
+    showProfile() {
+        if (!this._profile) return;
+        const stats = this._profile.getStats();
+        const fmtTime = (s) => {
+            const m = Math.floor(s / 60);
+            const h = Math.floor(m / 60);
+            return h > 0 ? `${h}时${m % 60}分` : `${m}分${Math.floor(s % 60)}秒`;
+        };
+
+        let html = `<div class="stat-row"><span class="label">游玩次数</span><span class="value">${stats.totalGames}</span></div>`;
+        html += `<div class="stat-row"><span class="label">总游戏时间</span><span class="value">${fmtTime(stats.totalPlayTime)}</span></div>`;
+        html += `<div class="stat-row"><span class="label">累计杀敌</span><span class="value">${stats.totalEnemiesKilled}</span></div>`;
+        html += `<div class="stat-row"><span class="label">击败Boss</span><span class="value">${stats.totalBossesKilled}</span></div>`;
+        html += `<div class="stat-row"><span class="label">累计金币</span><span class="value">🪙 ${stats.totalGold}</span></div>`;
+        html += `<div class="stat-row"><span class="label">最深层数</span><span class="value">地下 ${stats.maxFloor} 层</span></div>`;
+        html += `<div class="stat-row"><span class="label">最高等级</span><span class="value">${stats.maxLevel} 级</span></div>`;
+        if (stats.classesPlayed.length > 0) {
+            html += `<div class="stat-row"><span class="label">使用职业</span><span class="value">${stats.classesPlayed.map(c => CLASS_DEFINITIONS[c]?.icon || c).join(' ')}</span></div>`;
+        }
+
+        // Achievements
+        html += '<h4>🏆 成就</h4><div class="ach-grid">';
+        for (const ach of stats.achievements) {
+            const cls = ach.unlocked ? 'unlocked' : 'locked';
+            html += `<div class="ach-item ${cls}">
+                <span class="ach-icon">${ach.unlocked ? ach.icon : '🔒'}</span>
+                <div class="ach-name">${ach.name}</div>
+                <div class="ach-desc">${ach.desc}</div>
+            </div>`;
+        }
+        html += '</div>';
+
+        // Recent runs
+        if (stats.runHistory.length > 0) {
+            html += '<h4>📜 近期冒险</h4>';
+            for (const run of stats.runHistory.slice(0, 5)) {
+                const clsIcon = CLASS_DEFINITIONS[run.classId]?.icon || '⚔️';
+                const date = new Date(run.date).toLocaleDateString('zh-CN');
+                html += `<div class="history-item">
+                    ${clsIcon} <span>${date}</span> | Lv.${run.level} | 地下${run.floor}层 | 🪙${run.gold}
+                    ${run.deathCause ? `| 💀${run.deathCause}` : ''}
+                </div>`;
+            }
+        }
+
+        document.getElementById('profile-content').innerHTML = html;
+        this.profilePanel.classList.add('active');
+        document.getElementById('profile-close').onclick = () => this.hideProfile();
+    }
+
+    hideProfile() {
+        this.profilePanel.classList.remove('active');
+    }
+
+    // ─── Chat Panel ────────────────────────────────
+    toggleChat() {
+        if (this.chatPanel.classList.contains('active')) {
+            this.hideChat();
+        } else {
+            this.showChat();
+        }
+    }
+
+    showChat() {
+        if (!this._chat) return;
+        this.chatPanel.classList.add('active');
+        this._renderChat();
+        document.getElementById('chat-close').onclick = () => this.hideChat();
+        document.getElementById('chat-send').onclick = () => this._sendChatMessage();
+        document.getElementById('chat-input').onkeydown = (e) => {
+            if (e.code === 'Enter') this._sendChatMessage();
+        };
+    }
+
+    hideChat() {
+        this.chatPanel.classList.remove('active');
+    }
+
+    _renderChat() {
+        if (!this._chat) return;
+        const msgs = this._chat.getMessages();
+        const container = document.getElementById('chat-messages');
+        let html = '';
+        for (const m of msgs.slice(-50)) {
+            const time = new Date(m.timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+            html += `<div class="msg ${m.channel}"><span class="time">${time}</span>${m.content}</div>`;
+        }
+        container.innerHTML = html || '<div style="color:#555;">暂无消息</div>';
+        container.scrollTop = container.scrollHeight;
+    }
+
+    _sendChatMessage() {
+        const input = document.getElementById('chat-input');
+        const text = input.value.trim();
+        if (!text || !this._chat) return;
+        this._chat.sendChat(text);
+        input.value = '';
+        this._renderChat();
     }
 
     setPlayerRef(player) {
