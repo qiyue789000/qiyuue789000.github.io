@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>深渊探索者 - 肉鸽地牢</title>
+<title>Shenyuan Tansuozhe</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -300,6 +300,7 @@ function pointInRect(px, py, rx, ry, rw, rh) {
 }
 
 
+
 function calcDamage(atk, def, critChance = 0, critMult = 1.5) {
     const isCrit = Math.random() < critChance;
     const base = atk * randFloat(0.9, 1.1);
@@ -338,6 +339,7 @@ function meleeHit(attackerX, attackerY, attackAngle, targetX, targetY, range, ar
     while (diff < -Math.PI) diff += Math.PI * 2;
     return Math.abs(diff) <= arcAngle;
 }
+
 
 
 const RARITY = {
@@ -645,6 +647,7 @@ function _drawRingIcon(ctx, s) {
 }
 
 
+
 class Particle {
     constructor(x, y, vx, vy, life, color, size = 3) {
         this.x = x;
@@ -814,6 +817,7 @@ class ParticleSystem {
         ctx.globalAlpha = 1;
     }
 }
+
 
 
 
@@ -1243,6 +1247,7 @@ class Player {
 }
 
 
+
 const TILE = 32;
 const GRID_COLS = 6;
 const GRID_ROWS = 6;
@@ -1563,6 +1568,7 @@ class Dungeon {
 
 
 
+
 // AI states
 const AI = { IDLE: 'idle', PATROL: 'patrol', CHASE: 'chase', ATTACK: 'attack', DEAD: 'dead' };
 
@@ -1862,6 +1868,7 @@ function spawnEnemiesForRoom(room, floor) {
     room.enemies = enemies;
     return enemies;
 }
+
 
 
 const TILE = 32;
@@ -2576,6 +2583,7 @@ class Renderer {
 
 
 
+
 const SKILL_KEYS = ['B', 'N', 'M'];
 
 class UI {
@@ -2893,6 +2901,7 @@ class UI {
         this._player = player;
     }
 }
+
 
 
 
