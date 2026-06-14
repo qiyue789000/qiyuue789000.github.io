@@ -29,6 +29,7 @@ export class Room {
         this.enemies = [];
         this.visited = false;
         this.id = id || `room_${px}_${py}`;
+        this.doors = { top: false, bottom: false, left: false, right: false };
         // For branch rooms
         this.branch = null;
         this.parent = null;
