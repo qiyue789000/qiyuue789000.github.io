@@ -13,7 +13,7 @@ import { dist, angle, clamp } from './utils.js';
 class Input {
     constructor(canvas) {
         this.keys = {};
-        this.mouse = { x: 0, y: 0, down: false, worldX: 0, worldY: 0, rightDown: false };
+        this.mouse = { x: 0, y: 0, down: false, worldX: 0, worldY: 0, rightDown: false, rightWorldX: 0, rightWorldY: 0 };
         this.justPressed = {};
 
         window.addEventListener('keydown', e => {
@@ -29,7 +29,14 @@ class Input {
         });
         canvas.addEventListener('mousedown', e => {
             if (e.button === 0) this.mouse.down = true;
-            if (e.button === 2) this.mouse.rightDown = true;
+            if (e.button === 2) {
+                this.mouse.rightDown = true;
+                // Store right-click screen position for pathfinding
+                const rect = canvas.getBoundingClientRect();
+                this.mouse._rightClickScreenX = e.clientX - rect.left;
+                this.mouse._rightClickScreenY = e.clientY - rect.top;
+                this.mouse._justRightClicked = true;
+            }
         });
         canvas.addEventListener('mouseup', e => {
             if (e.button === 0) this.mouse.down = false;
@@ -41,6 +48,11 @@ class Input {
     update(camera) {
         this.mouse.worldX = this.mouse.x + camera.x;
         this.mouse.worldY = this.mouse.y + camera.y;
+        // Convert right-click screen pos to world
+        if (this.mouse._justRightClicked) {
+            this.mouse.rightWorldX = this.mouse._rightClickScreenX + camera.x;
+            this.mouse.rightWorldY = this.mouse._rightClickScreenY + camera.y;
+        }
     }
 
     consumeJustPressed() {
@@ -204,9 +216,16 @@ class Game {
         // Handle inputs
         const justPressed = this.input.consumeJustPressed();
 
-        // Attack
-        if (this.input.mouse.down) {
-            const result = this.player.attack(this.input.mouse.worldX, this.input.mouse.worldY, dt);
+        // Attack (mouse left or J key)
+        const attacking = this.input.mouse.down || this.input.keys['KeyJ'];
+        if (attacking && this.player.attackTimer <= 0) {
+            const atkX = this.input.keys['KeyJ']
+                ? this.player.x + Math.cos(this.player.facingAngle) * 60
+                : this.input.mouse.worldX;
+            const atkY = this.input.keys['KeyJ']
+                ? this.player.y + Math.sin(this.player.facingAngle) * 60
+                : this.input.mouse.worldY;
+            const result = this.player.attack(atkX, atkY, dt);
             if (result) {
                 const hits = this.player.performMeleeAttack(this.enemies, this.input.mouse.worldX, this.input.mouse.worldY);
                 for (const hit of hits) {
@@ -512,6 +531,22 @@ class Game {
             }
         }
 
+        // Right-click auto-move
+        if (this.input.mouse._justRightClicked) {
+            this.player.autoMoveTarget = {
+                x: this.input.mouse.rightWorldX,
+                y: this.input.mouse.rightWorldY
+            };
+            this.player.autoMoveActive = true;
+            this.input.mouse._justRightClicked = false;
+        }
+        // Cancel auto-move on WASD press
+        if (justPressed['KeyW'] || justPressed['KeyA'] || justPressed['KeyS'] || justPressed['KeyD'] ||
+            justPressed['ArrowUp'] || justPressed['ArrowDown'] || justPressed['ArrowLeft'] || justPressed['ArrowRight']) {
+            this.player.autoMoveActive = false;
+            this.player.autoMoveTarget = null;
+        }
+
         // Pickup ground items
         for (let i = this.groundItems.length - 1; i >= 0; i--) {
             const item = this.groundItems[i];
@@ -805,6 +840,24 @@ class Game {
 
         // Draw vignette
         this.renderer.drawVignette();
+
+        // Draw auto-move destination marker
+        if (this.player.autoMoveActive && this.player.autoMoveTarget) {
+            const mx = this.player.autoMoveTarget.x - this.renderer.sx;
+            const my = this.player.autoMoveTarget.y - this.renderer.sy;
+            const pulse = Math.sin(this.renderer.animTime * 4) * 4;
+            this.renderer.ctx.strokeStyle = '#2ecc71';
+            this.renderer.ctx.lineWidth = 2;
+            this.renderer.ctx.setLineDash([4, 4]);
+            this.renderer.ctx.beginPath();
+            this.renderer.ctx.arc(mx, my, 10 + pulse, 0, Math.PI * 2);
+            this.renderer.ctx.stroke();
+            this.renderer.ctx.setLineDash([]);
+            // Crosshair center
+            this.renderer.ctx.fillStyle = '#2ecc71';
+            this.renderer.ctx.fillRect(mx - 1, my - 5, 2, 10);
+            this.renderer.ctx.fillRect(mx - 5, my - 1, 10, 2);
+        }
 
         // Draw minimap
         this.renderer.drawMinimap(this.dungeon, this.player);

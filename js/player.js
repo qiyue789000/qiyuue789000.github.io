@@ -58,6 +58,10 @@ export class Player {
         this.animTimer = 0;
         this.hitFlash = 0;
 
+        // Auto-move (right-click pathfinding)
+        this.autoMoveTarget = null;
+        this.autoMoveActive = false;
+
         // Class-specific passive states
         this._battleCryTimer = 0;
         this._shieldHp = 0;
@@ -438,6 +442,21 @@ export class Player {
             if (input.keys['KeyA'] || input.keys['ArrowLeft']) mx -= 1;
             if (input.keys['KeyD'] || input.keys['ArrowRight']) mx += 1;
 
+            // Auto-move towards right-click target
+            if (mx === 0 && my === 0 && this.autoMoveActive && this.autoMoveTarget) {
+                const dx = this.autoMoveTarget.x - this.x;
+                const dy = this.autoMoveTarget.y - this.y;
+                const d = Math.sqrt(dx * dx + dy * dy);
+                if (d < 8) {
+                    // Reached destination
+                    this.autoMoveActive = false;
+                    this.autoMoveTarget = null;
+                } else {
+                    mx = dx / d;
+                    my = dy / d;
+                }
+            }
+
             if (mx !== 0 || my !== 0) {
                 const len = Math.sqrt(mx * mx + my * my);
                 mx /= len;
@@ -445,8 +464,11 @@ export class Player {
                 this.facingAngle = Math.atan2(my, mx);
             }
 
-            this.x += mx * this.spd * dt;
-            this.y += my * this.spd * dt;
+            const moveSpd = (this.autoMoveActive && !input.keys['KeyW'] && !input.keys['KeyA'] && !input.keys['KeyS'] && !input.keys['KeyD'] &&
+                !input.keys['ArrowUp'] && !input.keys['ArrowDown'] && !input.keys['ArrowLeft'] && !input.keys['ArrowRight'])
+                ? this.spd * 1.15 : this.spd;
+            this.x += mx * moveSpd * dt;
+            this.y += my * moveSpd * dt;
         }
 
         // Wall collision

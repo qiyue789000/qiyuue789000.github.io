@@ -97,7 +97,7 @@ export class UI {
             </div>
             ${passivesHtml ? `<div style="margin-top:1px;">${passivesHtml}</div>` : ''}
             <div style="font-size:9px;color:#444;margin-top:1px;">
-                [WASD]移动 [鼠标]攻击 [空格]闪避 [Q]药水 [I]包 [B/N/M]技 [E]店 [P]档案 [回车]聊
+                [WASD]移 [右键]寻路 [左键/J]攻 [空格]闪 [Q]药 [I]包 [B/N/M]技 [E]店 [P]档 [回车]聊
             </div>
             ${currentRoom && currentRoom.type === 'shop' ? '<div style="font-size:13px;color:#f1c40f;margin-top:3px;animation:pulse 1s infinite;">🏪 按 [E] 打开商店</div>' : ''}
         `;
