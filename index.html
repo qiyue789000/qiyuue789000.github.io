@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Shenyuan Tansuozhe</title>
+<title>深渊探索者</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -223,11 +223,27 @@ canvas {
     transition: opacity 0.3s;
 }
 
+#error-console {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    background: rgba(200,0,0,0.9);
+    color: #fff;
+    padding: 20px;
+    font-size: 14px;
+    max-width: 600px;
+    display: none;
+    z-index: 1000;
+    pointer-events: all;
+    white-space: pre-wrap;
+    font-family: monospace;
+}
 </style>
 </head>
 <body>
 <div id="game-container">
 <canvas id="game-canvas"></canvas>
+<div id="error-console" onclick="this.style.display='none'">点击关闭</div>
 <div id="ui-layer">
 <div id="hud"></div>
 <div id="level-up-notify"></div>
@@ -239,6 +255,15 @@ canvas {
 </div>
 </div>
 <script>
+window.onerror = function(msg, url, line, col, err) {
+    var el = document.getElementById('error-console');
+    el.style.display = 'block';
+    el.innerHTML = 'JS Error: ' + msg + '
+Line: ' + line + '
+' + (err ? err.stack : '');
+    return false;
+};
+try {
 // Utility functions
 
 function rand(min, max) {
@@ -3360,6 +3385,12 @@ if (gameCanvas) {
     game.start();
 }
 
+} catch(e) {
+    var el = document.getElementById('error-console');
+    el.style.display = 'block';
+    el.innerHTML = 'Init Error: ' + e.message + '
+' + e.stack;
+}
 </script>
 </body>
 </html>
