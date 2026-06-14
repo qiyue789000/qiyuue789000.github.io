@@ -26,14 +26,24 @@ export class UI {
         this.profilePanel = document.getElementById('profile-panel');
         this.chatPanel = document.getElementById('chat-panel');
 
+        this.settingsPanel = document.getElementById('settings-panel');
+
         document.addEventListener('keydown', (e) => {
             if (e.code === 'KeyI') this.toggleInventory();
             if (e.code === 'KeyP') this.toggleProfile();
-            if (e.code === 'Enter' && !e.target.closest('#chat-input')) {
+            if (e.code === 'KeyO') this.toggleSettings();
+            if (e.code === 'F1') this.toggleSettings();
+            if (e.code === 'Enter' && !e.target.closest('#chat-input') && !e.target.closest('#settings-panel')) {
                 e.preventDefault();
                 this.toggleChat();
             }
-            if (e.code === 'Escape') { this.hideInventory(); this.hideShop(); }
+            if (e.code === 'Escape') {
+                if (this.settingsPanel && this.settingsPanel.classList.contains('active')) {
+                    this.hideSettings();
+                } else {
+                    this.hideInventory(); this.hideShop();
+                }
+            }
         });
     }
 
@@ -93,7 +103,7 @@ export class UI {
                 <span style="margin-left:8px;font-size:12px;">${skillsHtml || ''}</span>
             </div>
             <div style="font-size:10px;color:#555;margin-top:2px;">
-                [WASD]移 [右键]寻路 [左键/J]攻 [空格]闪 [Q]药 [I]包 [B/N/M]技 [E]店 [F5]存 [F9]读
+                [WASD]移 [右键]寻 [左键/J]攻 [空格]闪 [Q]药 [I]包 [B/N/M]技 [E]店 [F5]存 [F9]读 [F1]设置
             </div>
             ${currentRoom && currentRoom.type === 'shop' ? '<div style="font-size:13px;color:#f1c40f;animation:pulse 1s infinite;">🏪 按 [E] 打开商店</div>' : ''}
         `;
@@ -523,6 +533,37 @@ export class UI {
 
     setPlayerRef(player) {
         this._player = player;
+    }
+
+    // ─── Settings Panel ────────────────────────────
+    toggleSettings() {
+        if (this.settingsPanel && this.settingsPanel.classList.contains('active')) {
+            this.hideSettings();
+        } else {
+            this.showSettings();
+        }
+    }
+
+    showSettings() {
+        if (!this.settingsPanel) return;
+        this.settingsPanel.classList.add('active');
+        document.getElementById('settings-close').onclick = () => this.hideSettings();
+        document.getElementById('settings-reset-tutorial').onclick = () => {
+            localStorage.removeItem('roguelike_tutorial_done');
+            this._flashNotify('📖 下次开局将显示教程');
+            this.hideSettings();
+        };
+        document.getElementById('settings-delete-save').onclick = () => {
+            if (confirm('确定要删除存档吗？')) {
+                localStorage.removeItem('roguelike_save');
+                this._flashNotify('🗑️ 存档已删除');
+                this.hideSettings();
+            }
+        };
+    }
+
+    hideSettings() {
+        if (this.settingsPanel) this.settingsPanel.classList.remove('active');
     }
 
     // ─── Tutorial ─────────────────────────────────
