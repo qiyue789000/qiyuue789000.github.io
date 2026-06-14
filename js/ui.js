@@ -1,5 +1,6 @@
 import { SLOTS, SLOT_NAMES, SLOT_ICONS } from './items.js';
 import { generateItem, rollRarity, createHpPotion, createMpPotion } from './items.js';
+import { CLASS_DEFINITIONS, ALL_CLASS_IDS } from './classes.js';
 
 const SKILL_KEYS = ['B', 'N', 'M'];
 
@@ -58,8 +59,10 @@ export class UI {
             if (player.passives.length > 3) passivesHtml += ` <span style="color:#555">+${player.passives.length-3}</span>`;
         }
 
+        const classIcon = player.classDef ? player.classDef.icon : '⚔️';
+        const className = player.classDef ? player.classDef.name : '冒险者';
         this.hudEl.innerHTML = `
-            <div style="font-size:18px;font-weight:bold;">深渊探索者 Lv.${player.level}</div>
+            <div style="font-size:18px;font-weight:bold;">${classIcon} ${className} Lv.${player.level}</div>
             <div style="font-size:12px;color:#888;">地下 ${dungeon.floor} 层</div>
             <div style="margin-top:3px;">
                 <div class="hp-bar-bg"><div class="hp-bar-fill" style="width:${hpPct}%"></div></div>
@@ -501,5 +504,47 @@ export class UI {
             this.tutorialCallback = null;
             cb();
         }
+    }
+
+    // ─── Class Select ─────────────────────────────
+    showClassSelect(callback) {
+        const overlay = document.getElementById('class-select-overlay');
+        const grid = document.getElementById('class-grid');
+        const confirmBtn = document.getElementById('class-confirm-btn');
+        let selectedClass = 'human';
+
+        // Build class cards
+        let html = '';
+        for (const id of ALL_CLASS_IDS) {
+            const cls = CLASS_DEFINITIONS[id];
+            const stats = cls.baseStats;
+            const statsStr = `❤${stats.maxHp} ⚔${stats.atk} 🛡${stats.def} 💨${stats.spd}`;
+            const skillCount = cls.uniqueActiveSkillIds.length;
+            const skillsStr = `专属技能:${skillCount}个`;
+            html += `<div class="class-card ${id === 'human' ? 'selected' : ''}" data-class="${id}">
+                <span class="class-icon">${cls.icon}</span>
+                <div class="class-name">${cls.name}</div>
+                <div class="class-desc">${cls.desc}</div>
+                <div class="class-stats">${statsStr}</div>
+                <div class="class-skills">${skillsStr}</div>
+            </div>`;
+        }
+        grid.innerHTML = html;
+        overlay.classList.add('active');
+        confirmBtn.disabled = false;
+
+        // Click handlers
+        grid.querySelectorAll('.class-card').forEach(card => {
+            card.addEventListener('click', () => {
+                grid.querySelectorAll('.class-card').forEach(c => c.classList.remove('selected'));
+                card.classList.add('selected');
+                selectedClass = card.dataset.class;
+            });
+        });
+
+        confirmBtn.onclick = () => {
+            overlay.classList.remove('active');
+            if (callback) callback(selectedClass);
+        };
     }
 }

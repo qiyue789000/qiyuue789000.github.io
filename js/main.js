@@ -87,11 +87,12 @@ class Game {
         this.init();
     }
 
-    init() {
+    init(classId = 'human') {
+        this.classId = classId;
         this.dungeon = new Dungeon(1);
         const startPos = this.dungeon.startRoom.randomPosition;
-        this.player = new Player(startPos.x, startPos.y);
-        this.player.gold = 50; // Starting gold
+        this.player = new Player(startPos.x, startPos.y, classId);
+        this.player.gold = 50;
         this.enemies = [];
         this.allProjectiles = [];
         this.damageNumbers = [];
@@ -99,6 +100,7 @@ class Game {
         this.clones = [];
         this.delayedEffects = [];
         this.chainLightnings = [];
+        this._playerProjectiles = [];
         this.gameOver = false;
         this.currentRoom = this.dungeon.startRoom;
         this.dungeon.startRoom.visited = true;
@@ -226,7 +228,7 @@ class Game {
         // Dash
         if (justPressed['Space']) {
             if (this.player.dash()) {
-                this.particles.emit(this.player.x, this.player.y, 6, {
+                this.particles.emit(this.player.x, this.player.y, 3, {
                     speed: [20, 60], life: [0.2, 0.4], color: '#3498db', size: [2, 4]
                 });
             }
@@ -270,13 +272,16 @@ class Game {
             }
         }
 
-        // Collect all projectiles (enemy projectiles)
+        // Collect all projectiles (enemy + player)
         this.allProjectiles = [];
         for (const enemy of this.enemies) {
             for (const p of enemy.projectiles) {
                 this.allProjectiles.push(p);
             }
         }
+        // Player projectiles (from ninja shuriken, mage missiles)
+        if (!this._playerProjectiles) this._playerProjectiles = [];
+        this.allProjectiles.push(...this._playerProjectiles);
 
         // Update projectiles & check player hits
         for (const p of this.allProjectiles) {
@@ -296,6 +301,26 @@ class Game {
                     this.gameOver = true;
                     this.ui.showGameOver(this.player, this.dungeon);
                     this.particles.emitDeath(this.player.x, this.player.y, '#e74c3c');
+                }
+            }
+        }
+
+        // Player projectiles hit enemies
+        for (let i = this._playerProjectiles.length - 1; i >= 0; i--) {
+            const p = this._playerProjectiles[i];
+            if (!p.active) { this._playerProjectiles.splice(i, 1); continue; }
+            for (const enemy of this.enemies) {
+                if (enemy.isDead) continue;
+                if (dist(p.x, p.y, enemy.x, enemy.y) < enemy.radius + p.size) {
+                    const died = enemy.takeDamage(p.damage);
+                    this.damageNumbers.push({
+                        x: enemy.x, y: enemy.y,
+                        amount: p.damage, crit: false, life: 0.6
+                    });
+                    this.particles.emitHit(enemy.x, enemy.y);
+                    p.active = false;
+                    if (died) this.onEnemyKilled(enemy);
+                    break;
                 }
             }
         }
@@ -376,8 +401,71 @@ class Game {
                         }
                     }
                 }
+                if (eff.type === 'blizzard') {
+                    this.particles.emit(eff.x, eff.y, 25, {
+                        speed: [20, 100], life: [0.5, 1.2], color: '#87ceeb', size: [2, 6], gravity: -20
+                    });
+                    this.particles.particles.push(new RingParticle(eff.x, eff.y, 0, 140, 0.6, '#87ceeb'));
+                    for (const enemy of this.enemies) {
+                        if (enemy.isDead) continue;
+                        if (dist(eff.x, eff.y, enemy.x, enemy.y) < eff.radius) {
+                            const { damage, crit } = calcDamage(eff.damage, enemy.def, this.player.crit, this.player.critMult);
+                            const died = enemy.takeDamage(damage);
+                            enemy._slowTimer = 3;
+                            enemy._slowAmount = eff.slowAmount || 0.5;
+                            this.damageNumbers.push({
+                                x: enemy.x, y: enemy.y,
+                                amount: damage, crit, life: 0.8
+                            });
+                            this.particles.emitHit(enemy.x, enemy.y);
+                            if (died) this.onEnemyKilled(enemy);
+                        }
+                    }
+                }
                 this.delayedEffects.splice(i, 1);
             }
+        }
+
+        // Purification aura damage (saintess)
+        if (this.player._purificationActive) {
+            for (const enemy of this.enemies) {
+                if (enemy.isDead) continue;
+                if (enemy.type === 'shadow_mage' && dist(this.player.x, this.player.y, enemy.x, enemy.y) < 100) {
+                    enemy.takeDamage(Math.floor(this.player.atk * 0.2 * dt * 10));
+                }
+            }
+            this.player._purificationActive = false;
+        }
+        // Holy nova trigger (saintess)
+        if (this.player._holyNovaTrigger) {
+            this.player._holyNovaTrigger = false;
+            this.particles.emit(this.player.x, this.player.y, 20, {
+                speed: [40, 150], life: [0.3, 0.7], color: '#f1c40f', size: [2, 6]
+            });
+            this.particles.particles.push(new RingParticle(this.player.x, this.player.y, 0, 100, 0.5, '#f1c40f'));
+            for (const enemy of this.enemies) {
+                if (enemy.isDead) continue;
+                if (enemy.type === 'shadow_mage' && dist(this.player.x, this.player.y, enemy.x, enemy.y) < 120) {
+                    const died = enemy.takeDamage(Math.floor(this.player.atk * 1.5));
+                    if (died) this.onEnemyKilled(enemy);
+                }
+            }
+        }
+        // Counter damage from block (knight)
+        if (this.player._counterDmg > 0) {
+            for (const enemy of this.enemies) {
+                if (enemy.isDead) continue;
+                if (dist(this.player.x, this.player.y, enemy.x, enemy.y) < 40) {
+                    const died = enemy.takeDamage(this.player._counterDmg);
+                    this.damageNumbers.push({
+                        x: enemy.x, y: enemy.y,
+                        amount: this.player._counterDmg, crit: true, life: 0.5
+                    });
+                    if (died) this.onEnemyKilled(enemy);
+                    break;
+                }
+            }
+            this.player._counterDmg = 0;
         }
 
         // Update chain lightning visuals
@@ -558,6 +646,7 @@ class Game {
         this.clones = [];
         this.delayedEffects = [];
         this.chainLightnings = [];
+        this._playerProjectiles = [];
         this.damageNumbers = [];
         this.currentRoom = this.dungeon.startRoom;
         this.dungeon.startRoom.visited = true;
@@ -650,9 +739,22 @@ class Game {
     }
 }
 
-// Start the game
+// Start the game with class selection
 const gameCanvas = document.getElementById('game-canvas');
 if (gameCanvas) {
     const game = new Game();
-    game.start();
+    // Don't auto-init; show class select first
+    game.init('human'); // Pre-init with default
+    game.renderer.clear();
+    game.renderer.drawVignette();
+    game.renderer.ctx.fillStyle = '#f1c40f';
+    game.renderer.ctx.font = '20px monospace';
+    game.renderer.ctx.textAlign = 'center';
+    game.renderer.ctx.fillText('加载中...', 512, 384);
+    game.renderer.ctx.textAlign = 'start';
+
+    game.ui.showClassSelect((classId) => {
+        game.init(classId);
+        game.start();
+    });
 }

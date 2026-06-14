@@ -14,7 +14,7 @@ export class Enemy {
         this.maxHp = config.hp || 30;
         this.hp = this.maxHp;
         this.atk = config.atk || 5;
-        this.def = config.def || 2;
+        this._baseDef = config.def || 2;
         this.spd = config.spd || 60;
         this.xpReward = config.xpReward || 10;
         this.goldReward = config.goldReward || rand(3, 8);
@@ -34,9 +34,30 @@ export class Enemy {
         this.hitFlash = 0;
         this.animTimer = randFloat(0, Math.PI * 2);
         this.isBoss = config.isBoss || false;
+
+        // Debuffs
+        this._stunTimer = 0;
+        this._slowTimer = 0;
+        this._slowAmount = 0;
+        this._tauntTimer = 0;
+        this._tauntTarget = null;
+        this._defDebuff = 1;
+        this._defDebuffTimer = 0;
     }
 
     get isDead() { return this.hp <= 0; }
+
+    get effectiveSpd() {
+        let spd = this.spd;
+        if (this._slowTimer > 0) spd *= (1 - this._slowAmount);
+        if (this._stunTimer > 0) spd = 0;
+        return spd;
+    }
+
+    get def() {
+        return Math.floor(this._baseDef * (this._defDebuffTimer > 0 ? this._defDebuff : 1));
+    }
+    set def(v) { this._baseDef = v; }
 
     takeDamage(amount) {
         this.hp -= amount;
@@ -62,6 +83,10 @@ export class Enemy {
         this.attackCooldown = Math.max(0, this.attackCooldown - dt);
         this.hitFlash = Math.max(0, this.hitFlash - dt);
         this.stateTimer -= dt;
+        this._stunTimer = Math.max(0, this._stunTimer - dt);
+        this._slowTimer = Math.max(0, this._slowTimer - dt);
+        this._tauntTimer = Math.max(0, this._tauntTimer - dt);
+        this._defDebuffTimer = Math.max(0, this._defDebuffTimer - dt);
 
         const d = dist(this.x, this.y, player.x, player.y);
 
@@ -86,7 +111,7 @@ export class Enemy {
                     this.state = AI.IDLE;
                     this.stateTimer = rand(1, 2);
                 } else {
-                    this.moveToward(this.patrolTarget.x, this.patrolTarget.y, this.spd * 0.4, dt);
+                    this.moveToward(this.patrolTarget.x, this.patrolTarget.y, this.effectiveSpd * 0.4, dt);
                 }
                 if (d < this.chaseRange) this.state = AI.CHASE;
                 break;
@@ -98,7 +123,11 @@ export class Enemy {
                 } else if (d <= this.attackRange) {
                     this.state = AI.ATTACK;
                 } else {
-                    this.moveToward(player.x, player.y, this.spd, dt);
+                    this.moveToward(player.x, player.y, this.effectiveSpd, dt);
+                }
+                // Taunt override: move toward taunt target instead of player
+                if (this._tauntTimer > 0 && this._tauntTarget && this.state === AI.CHASE) {
+                    this.moveToward(this._tauntTarget.x, this._tauntTarget.y, this.effectiveSpd, dt);
                 }
                 break;
 
@@ -112,8 +141,8 @@ export class Enemy {
                 // Strafe slightly
                 if (this.isRanged && d < this.attackRange * 0.5) {
                     const a = angle(player.x, player.y, this.x, this.y);
-                    this.x += Math.cos(a) * this.spd * 0.5 * dt;
-                    this.y += Math.sin(a) * this.spd * 0.5 * dt;
+                    this.x += Math.cos(a) * this.effectiveSpd * 0.5 * dt;
+                    this.y += Math.sin(a) * this.effectiveSpd * 0.5 * dt;
                 }
                 break;
         }

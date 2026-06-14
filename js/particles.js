@@ -51,6 +51,7 @@ export class RingParticle {
 export class ParticleSystem {
     constructor() {
         this.particles = [];
+        this.scale = 0.55; // Global particle reduction
     }
 
     emit(x, y, count, config = {}) {
@@ -75,7 +76,7 @@ export class ParticleSystem {
     }
 
     emitHit(x, y) {
-        this.emit(x, y, 8, {
+        this.emit(x, y, Math.floor(4 * this.scale * 1.8), {
             speed: [40, 150],
             life: [0.2, 0.5],
             color: '#ff4444',
@@ -85,28 +86,25 @@ export class ParticleSystem {
     }
 
     emitDeath(x, y, color = '#ff0') {
-        // Burst particles
-        this.emit(x, y, 25, {
+        this.emit(x, y, Math.floor(12 * this.scale * 1.8), {
             speed: [30, 200],
             life: [0.3, 0.9],
             color,
             size: [2, 7],
             gravity: 100
         });
-        // White spark ring
-        this.emit(x, y, 12, {
+        this.emit(x, y, Math.floor(6 * this.scale * 1.8), {
             speed: [80, 220],
             life: [0.15, 0.35],
             color: '#fff',
             size: [1, 3],
             gravity: 0
         });
-        // Expanding ring particles (drawn manually)
         this.particles.push(new RingParticle(x, y, 0, 80, 0.4, color));
     }
 
     emitCritHit(x, y) {
-        this.emit(x, y, 15, {
+        this.emit(x, y, Math.floor(8 * this.scale * 1.8), {
             speed: [60, 200],
             life: [0.2, 0.5],
             color: '#f1c40f',
@@ -114,11 +112,10 @@ export class ParticleSystem {
             gravity: 0
         });
         this.particles.push(new RingParticle(x, y, 0, 50, 0.3, '#f1c40f'));
-        this.particles.push(new RingParticle(x, y, 0, 30, 0.2, '#fff'));
     }
 
     emitLevelUp(x, y) {
-        this.emit(x, y, 30, {
+        this.emit(x, y, Math.floor(30 * this.scale * 1.8), {
             speed: [50, 200],
             life: [0.5, 1.2],
             color: '#f1c40f',
@@ -128,7 +125,7 @@ export class ParticleSystem {
     }
 
     emitHeal(x, y) {
-        this.emit(x, y, 12, {
+        this.emit(x, y, Math.floor(6 * this.scale * 1.8), {
             speed: [20, 80],
             life: [0.4, 0.9],
             color: '#2ecc71',

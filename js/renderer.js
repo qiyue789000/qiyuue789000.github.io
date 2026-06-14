@@ -189,6 +189,39 @@ export class Renderer {
         ctx.ellipse(px, py + r * 0.55, r * 0.75, r * 0.3, 0, 0, Math.PI * 2);
         ctx.fill();
 
+        const vis = player.classDef ? player.classDef.visual : { bodyScale: 1, bodyColor: '#d4a574', helmetStyle: 'default', eyeStyle: 'normal', accessories: { back: [], front: [] }, scaleWeapon: 1, bodyShape: 'circle' };
+        const scaledR = r * (vis.bodyScale || 1);
+
+        // ─── Back accessories ───
+        for (const acc of vis.accessories.back || []) {
+            if (acc === 'halo') {
+                ctx.fillStyle = `rgba(241,196,15,${0.25 + Math.sin(this.animTime * 3) * 0.1})`;
+                ctx.beginPath();
+                ctx.ellipse(px, py - scaledR * 1.1, scaledR * 0.6, scaledR * 0.2, 0, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            if (acc === 'scarf') {
+                ctx.strokeStyle = '#c0392b';
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                ctx.moveTo(px - scaledR * 0.3, py - scaledR * 0.5);
+                ctx.quadraticCurveTo(px - scaledR * 0.7, py + scaledR * 0.2, px - scaledR * 0.5 + Math.sin(this.animTime * 4) * 3, py + scaledR * 0.8);
+                ctx.stroke();
+                ctx.lineWidth = 1;
+            }
+            if (acc === 'robe_back') {
+                const robeColor = vis.bodyColor === '#f5e6d3' ? '#fafafa' : '#3d2b5a';
+                ctx.fillStyle = robeColor;
+                ctx.beginPath();
+                ctx.moveTo(px - scaledR * 0.8, py - scaledR * 0.2);
+                ctx.lineTo(px - scaledR * 1.1, py + scaledR * 1.0);
+                ctx.lineTo(px + scaledR * 1.1, py + scaledR * 1.0);
+                ctx.lineTo(px + scaledR * 0.8, py - scaledR * 0.2);
+                ctx.closePath();
+                ctx.fill();
+            }
+        }
+
         // Invincibility flicker
         if (player.invincibleTimer > 0 && Math.floor(player.invincibleTimer * 20) % 2 === 0) {
             ctx.globalAlpha = 0.4;
@@ -197,7 +230,11 @@ export class Renderer {
         const hitColor = player.hitFlash > 0;
         const armorColor = this._getArmorColor(player);
         const weaponType = this._getWeaponType(player);
-        const bodyColor = hitColor ? '#fff' : armorColor;
+        const classBodyColor = vis.bodyColor || '#d4a574';
+        const bodyColor = hitColor ? '#fff' : (vis.idleBob ? classBodyColor : armorColor);
+
+        // Idle bob animation
+        const bobY = vis.idleBob ? Math.sin(this.animTime * 2.5) * 2 : 0;
 
         // ─── Ring glow aura ───
         const ring = player.equipment.ring;
@@ -224,51 +261,102 @@ export class Renderer {
         // ─── Body ───
         ctx.fillStyle = bodyColor;
         ctx.beginPath();
-        ctx.arc(px, py, r, 0, Math.PI * 2);
+        ctx.arc(px, py + bobY, scaledR, 0, Math.PI * 2);
         ctx.fill();
         ctx.strokeStyle = hitColor ? '#f44' : '#1a1a2e';
         ctx.lineWidth = 2.5;
         ctx.stroke();
 
         // Inner highlight
-        const grad = ctx.createRadialGradient(px - r * 0.3, py - r * 0.3, r * 0.1, px, py, r);
+        const grad = ctx.createRadialGradient(px - scaledR * 0.3, py + bobY - scaledR * 0.3, scaledR * 0.1, px, py + bobY, scaledR);
         grad.addColorStop(0, 'rgba(255,255,255,0.2)');
         grad.addColorStop(1, 'rgba(255,255,255,0)');
         ctx.fillStyle = grad;
         ctx.beginPath();
-        ctx.arc(px, py, r, 0, Math.PI * 2);
+        ctx.arc(px, py + bobY, scaledR, 0, Math.PI * 2);
         ctx.fill();
 
         // ─── Helmet ───
-        const helm = player.equipment.helmet;
-        if (helm) {
-            const helmColors = { COMMON: '#999', RARE: '#5dade2', EPIC: '#a569bd', LEGENDARY: '#e67e22' };
-            const hc = helmColors[helm.rarity] || '#888';
-            ctx.fillStyle = hitColor ? '#fff' : hc;
-            // Helmet dome
+        if (vis.helmetStyle === 'pointedHat') {
+            // Mage pointed hat
+            ctx.fillStyle = hitColor ? '#fff' : '#3d2b5a';
             ctx.beginPath();
-            ctx.arc(px, py - r * 0.25, r * 0.7, Math.PI, 0);
+            ctx.moveTo(px - scaledR * 0.7, py + bobY - scaledR * 0.2);
+            ctx.lineTo(px + Math.cos(a) * scaledR * 0.3, py + bobY - scaledR * 1.8);
+            ctx.lineTo(px + scaledR * 0.7, py + bobY - scaledR * 0.2);
+            ctx.closePath();
             ctx.fill();
-            ctx.fillRect(px - r * 0.7, py - r * 0.25, r * 1.4, r * 0.15);
-            // Visor slit
-            ctx.fillStyle = '#111';
-            ctx.fillRect(px - r * 0.5, py - r * 0.35, r, r * 0.08);
-            ctx.fillStyle = hitColor ? '#fff' : hc;
+            ctx.strokeStyle = '#5b4a7a';
+            ctx.lineWidth = 1;
+            ctx.stroke();
+            // Hat brim
+            ctx.fillStyle = '#2a1a4a';
+            ctx.fillRect(px - scaledR * 0.8, py + bobY - scaledR * 0.3, scaledR * 1.6, scaledR * 0.15);
+        } else if (vis.helmetStyle === 'hood') {
+            // Ninja hood
+            ctx.fillStyle = hitColor ? '#fff' : '#1a1a2e';
+            ctx.beginPath();
+            ctx.arc(px, py + bobY - scaledR * 0.1, scaledR * 0.75, Math.PI, 0);
+            ctx.fill();
+        } else if (vis.helmetStyle === 'circlet') {
+            // Saintess circlet
+            ctx.strokeStyle = '#f1c40f';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(px, py + bobY - scaledR * 0.15, scaledR * 0.5, Math.PI * 0.4, Math.PI * 0.6);
+            ctx.stroke();
+            ctx.lineWidth = 1;
+        } else {
+            const helm = player.equipment.helmet;
+            if (helm) {
+                const helmColors = { COMMON: '#999', RARE: '#5dade2', EPIC: '#a569bd', LEGENDARY: '#e67e22' };
+                const hc = helmColors[helm.rarity] || '#888';
+                ctx.fillStyle = hitColor ? '#fff' : hc;
+                ctx.beginPath();
+                ctx.arc(px, py + bobY - scaledR * 0.25, scaledR * 0.7, Math.PI, 0);
+                ctx.fill();
+                ctx.fillRect(px - scaledR * 0.7, py + bobY - scaledR * 0.25, scaledR * 1.4, scaledR * 0.15);
+                ctx.fillStyle = '#111';
+                ctx.fillRect(px - scaledR * 0.5, py + bobY - scaledR * 0.35, scaledR, scaledR * 0.08);
+                ctx.fillStyle = hitColor ? '#fff' : hc;
+            }
         }
 
         // ─── Eyes ───
         const ex = Math.cos(a) * 4;
         const ey = Math.sin(a) * 4;
-        ctx.fillStyle = '#fff';
-        ctx.beginPath();
-        ctx.arc(px + ex - 3, py + ey - 3, 3.5, 0, Math.PI * 2);
-        ctx.arc(px + ex + 3, py + ey - 3, 3.5, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = '#111';
-        ctx.beginPath();
-        ctx.arc(px + ex - 2.5, py + ey - 2.5, 1.8, 0, Math.PI * 2);
-        ctx.arc(px + ex + 3.5, py + ey - 2.5, 1.8, 0, Math.PI * 2);
-        ctx.fill();
+        if (vis.eyeStyle === 'mask') {
+            // Ninja mask
+            ctx.fillStyle = '#1a1a2e';
+            ctx.fillRect(px - scaledR * 0.8, py + bobY - scaledR * 0.5, scaledR * 1.6, scaledR * 0.4);
+            ctx.fillStyle = '#fff';
+            ctx.fillRect(px - scaledR * 0.7, py + bobY - scaledR * 0.42, scaledR * 1.4, scaledR * 0.06);
+        } else if (vis.eyeStyle === 'glowing') {
+            ctx.fillStyle = '#fff';
+            ctx.shadowColor = '#f1c40f';
+            ctx.shadowBlur = 6;
+            ctx.beginPath();
+            ctx.arc(px + ex - 3, py + bobY + ey - 3, 3.5, 0, Math.PI * 2);
+            ctx.arc(px + ex + 3, py + bobY + ey - 3, 3.5, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#f1c40f';
+            ctx.shadowBlur = 0;
+            ctx.beginPath();
+            ctx.arc(px + ex - 2.5, py + bobY + ey - 2.5, 1.8, 0, Math.PI * 2);
+            ctx.arc(px + ex + 3.5, py + bobY + ey - 2.5, 1.8, 0, Math.PI * 2);
+            ctx.fill();
+        } else {
+            ctx.fillStyle = '#fff';
+            ctx.beginPath();
+            ctx.arc(px + ex - 3, py + bobY + ey - 3, 3.5, 0, Math.PI * 2);
+            ctx.arc(px + ex + 3, py + bobY + ey - 3, 3.5, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#111';
+            ctx.beginPath();
+            ctx.arc(px + ex - 2.5, py + bobY + ey - 2.5, 1.8, 0, Math.PI * 2);
+            ctx.arc(px + ex + 3.5, py + bobY + ey - 2.5, 1.8, 0, Math.PI * 2);
+            ctx.fill();
+        }
 
         // ─── Weapon ───
         const weapon = player.equipment.weapon;
@@ -332,6 +420,65 @@ export class Renderer {
 
         ctx.globalAlpha = 1;
         ctx.lineWidth = 1;
+
+        // ─── Front accessories ───
+        for (const acc of vis.accessories.front || []) {
+            if (acc === 'shield') {
+                // Knight shield
+                const sx = px + Math.cos(a - Math.PI / 2) * scaledR * 0.6;
+                const sy = py + bobY + Math.sin(a - Math.PI / 2) * scaledR * 0.6;
+                ctx.fillStyle = '#8899aa';
+                ctx.strokeStyle = '#555';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.roundRect(sx - scaledR * 0.4, sy - scaledR * 0.6, scaledR * 0.8, scaledR * 1.2, 3);
+                ctx.fill();
+                ctx.stroke();
+                // Shield highlight
+                ctx.fillStyle = 'rgba(255,255,255,0.15)';
+                ctx.fillRect(sx - scaledR * 0.2, sy - scaledR * 0.4, scaledR * 0.3, scaledR * 0.5);
+            }
+            if (acc === 'robe_front') {
+                const robeColor = vis.bodyColor === '#f5e6d3' ? '#fafafa' : '#3d2b5a';
+                ctx.strokeStyle = robeColor;
+                ctx.lineWidth = 1.5;
+                // V-neck line
+                ctx.beginPath();
+                ctx.moveTo(px, py + bobY);
+                ctx.lineTo(px - scaledR * 0.3, py + bobY + scaledR * 0.7);
+                ctx.moveTo(px, py + bobY);
+                ctx.lineTo(px + scaledR * 0.3, py + bobY + scaledR * 0.7);
+                ctx.stroke();
+            }
+            if (acc === 'floating_orb') {
+                // Floating orb for mage
+                const orbAngle = this.animTime * 2;
+                const orbDist = scaledR + 12;
+                const ox = px + Math.cos(orbAngle) * orbDist;
+                const oy = py + bobY + Math.sin(orbAngle) * orbDist;
+                const orbGrad = ctx.createRadialGradient(ox, oy, 1, ox, oy, 5);
+                orbGrad.addColorStop(0, '#fff');
+                orbGrad.addColorStop(0.5, '#00ffff');
+                orbGrad.addColorStop(1, 'rgba(0,255,255,0)');
+                ctx.fillStyle = orbGrad;
+                ctx.beginPath();
+                ctx.arc(ox, oy, 5, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+        ctx.lineWidth = 1;
+
+        // ─── Ninja persistent trail ───
+        if (vis.trailColor && !player.isDashing) {
+            ctx.fillStyle = vis.trailColor;
+            for (let i = 1; i <= 2; i++) {
+                const tx = px - Math.cos(a) * i * 6;
+                const ty = py + bobY - Math.sin(a) * i * 6;
+                ctx.beginPath();
+                ctx.arc(tx, ty, scaledR * (1 - i * 0.2), 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
 
         // ─── Dash trail ───
         if (player.isDashing) {

@@ -1,74 +1,35 @@
 import { xpForLevel, clamp, angle, dist } from './utils.js';
 import { calcDamage, meleeHit } from './combat.js';
-
-const BASE_STATS = {
-    maxHp: 100,
-    maxMp: 60,
-    atk: 10,
-    def: 3,
-    spd: 180,
-    crit: 0.05,
-    critMult: 1.5,
-    attackRange: 45,
-    attackSpeed: 0.4,
-    mpRegen: 3  // MP per second
-};
-
-// Active skills with mana costs
-const ACTIVE_SKILLS = [
-    { name: '旋风斩', desc: '对周围敌人造成范围伤害', cd: 3, cost: 15, icon: '🌀', type: 'aoe' },
-    { name: '冲刺斩', desc: '向前冲刺并造成伤害', cd: 2, cost: 10, icon: '⚡', type: 'dash_atk' },
-    { name: '回血术', desc: '恢复 30% 最大生命值', cd: 15, cost: 25, icon: '💚', type: 'heal' },
-    { name: '狂暴', desc: '5秒内攻击力翻倍', cd: 20, cost: 30, icon: '🔥', type: 'buff' },
-    { name: '冰霜新星', desc: '冻结周围敌人 2 秒', cd: 8, cost: 20, icon: '❄️', type: 'aoe' },
-    { name: '暗影步', desc: '瞬移到鼠标位置', cd: 4, cost: 12, icon: '🌑', type: 'blink' },
-    { name: '连锁闪电', desc: '发射穿透闪电链', cd: 5, cost: 18, icon: '⚡', type: 'projectile' },
-    { name: '荆棘光环', desc: '10秒内反弹50%伤害', cd: 25, cost: 35, icon: '🌿', type: 'buff' },
-    { name: '分身术', desc: '召唤2个分身战斗8秒', cd: 30, cost: 40, icon: '👥', type: 'summon' },
-    { name: '陨石', desc: '召唤陨石造成大范围伤害', cd: 12, cost: 35, icon: '☄️', type: 'aoe' }
-];
-
-// Passive skills (always active, unlocked at specific levels)
-const PASSIVE_SKILLS = [
-    { name: '坚韧', desc: '生命值上限 +10%', level: 5, icon: '❤️', stat: 'maxHp', value: 0.1, type: 'pct' },
-    { name: '锐利', desc: '攻击力 +15%', level: 10, icon: '⚔️', stat: 'atk', value: 0.15, type: 'pct' },
-    { name: '铁壁', desc: '防御力 +20%', level: 15, icon: '🛡️', stat: 'def', value: 0.2, type: 'pct' },
-    { name: '疾步', desc: '移动速度 +12%', level: 20, icon: '💨', stat: 'spd', value: 0.12, type: 'pct' },
-    { name: '冥想', desc: '法力恢复 +50%', level: 25, icon: '🧘', stat: 'mpRegen', value: 0.5, type: 'pct' },
-    { name: '会心', desc: '暴击率 +5%', level: 30, icon: '💥', stat: 'crit', value: 0.05, type: 'flat' },
-    { name: '生命源泉', desc: '每秒恢复 1% 生命', level: 35, icon: '💖', stat: 'hpRegen', value: 0.01, type: 'pct' },
-    { name: '强击', desc: '暴击伤害 +25%', level: 40, icon: '✨', stat: 'critMult', value: 0.25, type: 'flat' },
-    { name: '法力潮汐', desc: '最大法力 +30%', level: 45, icon: '🌊', stat: 'maxMp', value: 0.3, type: 'pct' },
-    { name: '吸血', desc: '攻击恢复造成伤害 8% 的生命', level: 50, icon: '🩸', stat: 'lifesteal', value: 0.08, type: 'flat' },
-    { name: '不朽', desc: '受到致命伤害时保留 1 点生命 (冷却 120 秒)', level: 60, icon: '⭐', stat: 'cheatDeath', value: 120, type: 'cd' },
-    { name: '武器精通', desc: '攻击力 +25%', level: 70, icon: '🗡️', stat: 'atk', value: 0.25, type: 'pct' },
-    { name: '金刚不坏', desc: '防御力 +30%', level: 80, icon: '🔰', stat: 'def', value: 0.3, type: 'pct' },
-    { name: '无限法力', desc: '技能消耗 -30%', level: 90, icon: '♾️', stat: 'skillCost', value: -0.3, type: 'pct' },
-    { name: '超神', desc: '全属性 +15%', level: 100, icon: '👑', stat: 'all', value: 0.15, type: 'pct' }
-];
+import { getClassDef } from './classes.js';
+import { ALL_SKILLS_BY_ID, SHARED_ACTIVE_SKILLS, CLASS_ACTIVE_SKILLS, SHARED_PASSIVE_SKILLS, CLASS_PASSIVE_SKILLS } from './skills.js';
 
 export class Player {
-    constructor(x, y) {
+    constructor(x, y, classId = 'human') {
+        const classDef = getClassDef(classId);
+        this.classId = classId;
+        this.classDef = classDef;
         this.x = x;
         this.y = y;
         this.radius = 14;
         this.level = 1;
         this.xp = 0;
         this.gold = 0;
-        this.hp = BASE_STATS.maxHp;
-        this.mp = BASE_STATS.maxMp;
 
-        // Base stats
-        this.baseMaxHp = BASE_STATS.maxHp;
-        this.baseMaxMp = BASE_STATS.maxMp;
-        this.baseAtk = BASE_STATS.atk;
-        this.baseDef = BASE_STATS.def;
-        this.baseSpd = BASE_STATS.spd;
-        this.baseCrit = BASE_STATS.crit;
-        this.baseMpRegen = BASE_STATS.mpRegen;
-        this.critMult = BASE_STATS.critMult;
-        this.attackRange = BASE_STATS.attackRange;
-        this.attackSpeed = BASE_STATS.attackSpeed;
+        // Base stats from class definition
+        const bs = classDef.baseStats;
+        this.baseMaxHp = bs.maxHp;
+        this.baseMaxMp = bs.maxMp;
+        this.baseAtk = bs.atk;
+        this.baseDef = bs.def;
+        this.baseSpd = bs.spd;
+        this.baseCrit = bs.crit;
+        this.baseMpRegen = bs.mpRegen;
+        this.critMult = bs.critMult;
+        this.attackRange = bs.attackRange;
+        this.attackSpeed = bs.attackSpeed;
+        this.statGrowth = classDef.statGrowth;
+        this.hp = this.maxHp;
+        this.mp = this.maxMp;
 
         // Equipment (7 slots)
         this.equipment = { weapon: null, helmet: null, armor: null, boots: null, gloves: null, amulet: null, ring: null };
@@ -96,6 +57,21 @@ export class Player {
         this.facingAngle = 0;
         this.animTimer = 0;
         this.hitFlash = 0;
+
+        // Class-specific passive states
+        this._battleCryTimer = 0;
+        this._shieldHp = 0;
+        this._shieldTimer = 0;
+        this._ironFortressTimer = 0;
+        this._purificationTimer = 0;
+        this._smokeTimer = 0;
+        this._nextAttackBonus = 1;
+        this._holyNovaTimer = 0;
+        this._unyieldingCooldown = 0;
+        this._lastX = x;
+        this._lastY = y;
+        this._stationaryTime = 0;
+        this._blockCooldown = 0;
     }
 
     // ─── Computed stats ───
@@ -126,25 +102,29 @@ export class Player {
     }
 
     get maxHp() {
-        const base = this.baseMaxHp + (this.level - 1) * 5 + this._equipStatSum('maxHp');
+        const base = this.baseMaxHp + (this.level - 1) * this.statGrowth.maxHp + this._equipStatSum('maxHp');
         return Math.floor(base * this._getPassiveMultiplier('maxHp'));
     }
 
     get maxMp() {
-        const base = this.baseMaxMp + (this.level - 1) * 3 + this._equipStatSum('maxMp');
+        const base = this.baseMaxMp + (this.level - 1) * this.statGrowth.maxMp + this._equipStatSum('maxMp');
         return Math.floor(base * this._getPassiveMultiplier('maxMp'));
     }
 
     get atk() {
-        const base = this.baseAtk + (this.level - 1) * 2 + this._equipStatSum('atk');
+        const base = this.baseAtk + (this.level - 1) * this.statGrowth.atk + this._equipStatSum('atk');
         let val = Math.floor(base * this._getPassiveMultiplier('atk') + this._getPassiveFlat('atk'));
         if (this.berserkTimer > 0) val = Math.floor(val * 2);
+        if (this._nextAttackBonus > 1) val = Math.floor(val * this._nextAttackBonus);
         return val;
     }
 
     get def() {
-        const base = this.baseDef + (this.level - 1) * 1 + this._equipStatSum('def');
-        return Math.floor(base * this._getPassiveMultiplier('def') + this._getPassiveFlat('def'));
+        const base = this.baseDef + (this.level - 1) * this.statGrowth.def + this._equipStatSum('def');
+        let val = Math.floor(base * this._getPassiveMultiplier('def') + this._getPassiveFlat('def'));
+        if (this._ironFortressTimer > 0) val = Math.floor(val * 1.6);
+        if (this._shieldWallActive) val = Math.floor(val * 1.3);
+        return val;
     }
 
     get spd() {
@@ -153,12 +133,23 @@ export class Player {
     }
 
     get crit() {
-        return Math.min(0.85, this.baseCrit + (this.level - 1) * 0.002 + this._equipStatSum('crit') + this._getPassiveFlat('crit'));
+        return Math.min(0.85, this.baseCrit + (this.level - 1) * this.statGrowth.crit + this._equipStatSum('crit') + this._getPassiveFlat('crit'));
     }
 
     get mpRegen() {
         const base = this.baseMpRegen + this._equipStatSum('mpRegen');
-        return base * this._getPassiveMultiplier('mpRegen');
+        let val = base * this._getPassiveMultiplier('mpRegen');
+        if (this._arcaneIntellectBonus) val *= 1.25;
+        return val;
+    }
+
+    get _shieldWallActive() {
+        const p = this.passives.find(p => p.id === 'shield_wall');
+        return p && this._stationaryTime >= 1;
+    }
+
+    get _arcaneIntellectBonus() {
+        return this.passives.some(p => p.id === 'arcane_intellect');
     }
 
     get lifesteal() {
@@ -192,14 +183,40 @@ export class Player {
     }
 
     unlockSkills() {
-        // Active skills every 10 levels
-        if (this.level % 10 === 0) {
-            const skill = ACTIVE_SKILLS[(this.level / 10 - 1) % ACTIVE_SKILLS.length];
-            this.skills.push({ ...skill, level: this.level });
-            this.skillCooldowns[skill.name] = 0;
+        const cd = this.classDef;
+        // --- Class-specific active skills ---
+        const classActives = cd.uniqueActiveSkillIds.map(id => ALL_SKILLS_BY_ID[id]).filter(Boolean);
+        // Unlock schedule: level 1, 8, 18 for class skills
+        const classUnlockLevels = [1, 8, 18];
+        for (let i = 0; i < classActives.length; i++) {
+            if (this.level === classUnlockLevels[i] && !this.skills.find(s => s.name === classActives[i].name)) {
+                this.skills.push({ ...classActives[i], level: this.level });
+                this.skillCooldowns[classActives[i].name] = 0;
+            }
         }
-        // Passive skills unlocked at specific levels
-        for (const ps of PASSIVE_SKILLS) {
+        // --- Shared active skills ---
+        // Unlock every 10 levels starting at level 10
+        if (this.level % 10 === 0 && this.level <= 90) {
+            const forbidden = cd.forbiddenSharedActives || [];
+            const currentNames = new Set(this.skills.map(s => s.name));
+            const available = SHARED_ACTIVE_SKILLS.filter(s => !forbidden.includes(s.id) && !currentNames.has(s.name));
+            if (available.length > 0) {
+                const skill = available[(Math.floor(this.level / 10) - 1) % available.length];
+                this.skills.push({ ...skill, level: this.level });
+                this.skillCooldowns[skill.name] = 0;
+            }
+        }
+        // --- Class-specific passives ---
+        const classPassives = CLASS_PASSIVE_SKILLS[this.classId] || [];
+        for (const cp of classPassives) {
+            if (this.level === cp.level && !this.passives.find(p => p.name === cp.name)) {
+                this.passives.push({ ...cp });
+            }
+        }
+        // --- Shared passives ---
+        const forbiddenPs = cd.forbiddenSharedPassives || [];
+        for (const ps of SHARED_PASSIVE_SKILLS) {
+            if (forbiddenPs.includes(ps.id)) continue;
             if (this.level === ps.level && !this.passives.find(p => p.name === ps.name)) {
                 this.passives.push({ ...ps });
             }
@@ -236,8 +253,37 @@ export class Player {
 
     // ─── Combat ───
     takeDamage(amount) {
-        if (this.invincibleTimer > 0) return 0;
-        const reduced = Math.max(1, amount - this.def);
+        if (this.invincibleTimer > 0 || this._smokeTimer > 0) return 0;
+
+        // Knight block chance
+        const blockPsv = this.passives.find(p => p.id === 'block');
+        if (blockPsv && Math.random() < blockPsv.value && this._blockCooldown <= 0) {
+            this._blockCooldown = 0.5;
+            this._counterDmg = 0;
+            const counterPsv = this.passives.find(p => p.id === 'counter');
+            if (counterPsv) this._counterDmg = Math.floor(this.atk * counterPsv.value);
+            return 0;
+        }
+
+        // Guardian shield absorption
+        let remaining = amount;
+        if (this._shieldHp > 0 && this._shieldTimer > 0) {
+            const absorbed = Math.min(this._shieldHp, remaining);
+            this._shieldHp -= absorbed;
+            remaining -= absorbed;
+            if (remaining <= 0) return 0;
+        }
+
+        // Mana shield (mage)
+        const manaShieldPsv = this.passives.find(p => p.id === 'mana_shield');
+        if (manaShieldPsv && this.mp > 0) {
+            const manaAbsorb = Math.min(this.mp, Math.floor(remaining * manaShieldPsv.value));
+            this.mp -= manaAbsorb;
+            remaining -= manaAbsorb;
+        }
+
+        // Normal defense reduction
+        const reduced = Math.max(1, remaining - this.def);
         this.hp -= reduced;
         this.hitFlash = 0.15;
         this.invincibleTimer = 0.3;
@@ -248,6 +294,14 @@ export class Player {
             const cdPassive = this.passives.find(p => p.stat === 'cheatDeath');
             this.cheatDeathCooldown = cdPassive.value;
         }
+
+        // Unyielding check (human passive)
+        if (this.hp > 0 && this.hp / this.maxHp < 0.2 && this._unyieldingCooldown <= 0 && this.passives.find(p => p.id === 'unyielding')) {
+            const unyPassive = this.passives.find(p => p.id === 'unyielding');
+            this._unyieldingCooldown = unyPassive.value;
+            // Buff applied via def getter and atk getter checks
+        }
+
         return reduced;
     }
 
@@ -275,156 +329,19 @@ export class Player {
         if (index >= this.skills.length) return null;
         const skill = this.skills[index];
         if (this.skillCooldowns[skill.name] > 0) return null;
-        if (!this.useMana(skill.cost)) return null;
+
+        // Check mana cost (with skill cost multiplier)
+        const cost = Math.ceil(skill.cost * this.skillCostMultiplier);
+        if (this.mp < cost) return null;
+        this.mp -= cost;
 
         this.skillCooldowns[skill.name] = skill.cd;
-        const result = { skill: skill.name, effects: [] };
 
-        switch (skill.name) {
-            case '旋风斩': {
-                for (const enemy of enemies) {
-                    if (!enemy.isDead && dist(this.x, this.y, enemy.x, enemy.y) < 80) {
-                        const { damage, crit } = calcDamage(this.atk * 1.5, enemy.def, this.crit, this.critMult);
-                        result.effects.push({ enemy, damage, crit });
-                    }
-                }
-                break;
-            }
-            case '回血术': {
-                const heal = Math.floor(this.maxHp * 0.3);
-                this.hp = Math.min(this.maxHp, this.hp + heal);
-                result.effects.push({ heal });
-                break;
-            }
-            case '冲刺斩': {
-                const a = angle(this.x, this.y, mouseX, mouseY);
-                this.isDashing = true;
-                this.dashDir = { x: Math.cos(a), y: Math.sin(a) };
-                this.dashTimer = 0.15;
-                this.invincibleTimer = 0.15;
-                const cx = this.x + Math.cos(a) * 60;
-                const cy = this.y + Math.sin(a) * 60;
-                for (const enemy of enemies) {
-                    if (!enemy.isDead && dist(cx, cy, enemy.x, enemy.y) < 60) {
-                        const { damage, crit } = calcDamage(this.atk * 2, enemy.def, this.crit, this.critMult);
-                        result.effects.push({ enemy, damage, crit });
-                    }
-                }
-                break;
-            }
-            case '狂暴': {
-                this.berserkTimer = 5;
-                result.effects.push({ buff: 'berserk' });
-                break;
-            }
-            case '冰霜新星': {
-                for (const enemy of enemies) {
-                    if (!enemy.isDead && dist(this.x, this.y, enemy.x, enemy.y) < 100) {
-                        const { damage, crit } = calcDamage(this.atk * 1.2, enemy.def, this.crit, this.critMult);
-                        result.effects.push({ enemy, damage, crit, freeze: true });
-                    }
-                }
-                break;
-            }
-            case '荆棘光环': {
-                this.thornsTimer = 10;
-                result.effects.push({ buff: 'thorns' });
-                break;
-            }
-            case '暗影步': {
-                // Teleport to mouse position (max range 250)
-                const d = dist(this.x, this.y, mouseX, mouseY);
-                const maxRange = 250;
-                if (d <= maxRange) {
-                    this.x = mouseX;
-                    this.y = mouseY;
-                } else {
-                    const a = angle(this.x, this.y, mouseX, mouseY);
-                    this.x += Math.cos(a) * maxRange;
-                    this.y += Math.sin(a) * maxRange;
-                }
-                this.invincibleTimer = 0.1;
-                result.effects.push({ blink: true });
-                break;
-            }
-            case '连锁闪电': {
-                // Chain lightning: hits nearest enemy to mouse, bounces up to 4 times
-                const chainRange = 130;
-                const maxBounces = 4;
-                let dmgMult = 1.0;
-                const hitSet = new Set();
-                const alive = enemies.filter(e => !e.isDead);
+        // Dispatch to skill's execute function
+        const skillDef = ALL_SKILLS_BY_ID[skill.id];
+        if (!skillDef || !skillDef.execute) return null;
 
-                // Find first target nearest to mouse
-                let first = null;
-                let firstDist = Infinity;
-                for (const e of alive) {
-                    const d = dist(mouseX, mouseY, e.x, e.y);
-                    if (d < chainRange && d < firstDist) {
-                        first = e;
-                        firstDist = d;
-                    }
-                }
-
-                if (first) {
-                    const { damage, crit } = calcDamage(this.atk * 1.8, first.def, this.crit, this.critMult);
-                    result.effects.push({ enemy: first, damage, crit, chain: true });
-                    hitSet.add(first);
-                    // Add lightning visual reference
-                    result.chainOrigin = { x: this.x, y: this.y };
-                    result.chainTargets = [{ x: first.x, y: first.y }];
-                    let last = first;
-
-                    for (let b = 1; b < maxBounces; b++) {
-                        dmgMult *= 0.7;
-                        let next = null;
-                        let nextDist = chainRange;
-                        for (const e of alive) {
-                            if (hitSet.has(e)) continue;
-                            const d = dist(last.x, last.y, e.x, e.y);
-                            if (d < nextDist) {
-                                next = e;
-                                nextDist = d;
-                            }
-                        }
-                        if (!next) break;
-                        const { damage: dmg, crit: cr } = calcDamage(Math.floor(this.atk * 1.8 * dmgMult), next.def, this.crit, this.critMult);
-                        result.effects.push({ enemy: next, damage: dmg, crit: cr, chain: true });
-                        result.chainTargets.push({ x: next.x, y: next.y });
-                        hitSet.add(next);
-                        last = next;
-                    }
-                }
-                break;
-            }
-            case '分身术': {
-                // Summon 2 clones that fight for 8 seconds
-                if (game && game.spawnClones) {
-                    game.spawnClones(2, 8);
-                }
-                result.effects.push({ buff: 'clones' });
-                break;
-            }
-            case '陨石': {
-                // Delayed AoE at mouse position
-                if (game && game.addDelayedEffect) {
-                    game.addDelayedEffect({
-                        type: 'meteor',
-                        x: mouseX,
-                        y: mouseY,
-                        delay: 0.8,
-                        damage: this.atk * 3,
-                        crit: this.crit,
-                        critMult: this.critMult,
-                        radius: 110,
-                        color: '#e74c3c'
-                    });
-                }
-                result.effects.push({ buff: 'meteor' });
-                break;
-            }
-        }
-        return result;
+        return skillDef.execute(this, enemies, mouseX, mouseY, game);
     }
 
     usePotion(item) {
@@ -463,6 +380,40 @@ export class Player {
         this.berserkTimer = Math.max(0, this.berserkTimer - dt);
         this.thornsTimer = Math.max(0, this.thornsTimer - dt);
         this.animTimer += dt;
+
+        // Class passive timers
+        this._battleCryTimer = Math.max(0, this._battleCryTimer - dt);
+        this._shieldTimer = Math.max(0, this._shieldTimer - dt);
+        this._ironFortressTimer = Math.max(0, this._ironFortressTimer - dt);
+        this._purificationTimer = Math.max(0, this._purificationTimer - dt);
+        this._smokeTimer = Math.max(0, this._smokeTimer - dt);
+        if (this._smokeTimer <= 0) this._nextAttackBonus = 1;
+        this._blockCooldown = Math.max(0, this._blockCooldown - dt);
+        this._unyieldingCooldown = Math.max(0, this._unyieldingCooldown - dt);
+        this._holyNovaTimer += dt;
+        const holyNovaPsv = this.passives.find(p => p.id === 'holy_nova');
+        if (holyNovaPsv && this._holyNovaTimer >= holyNovaPsv.value) {
+            this._holyNovaTimer = 0;
+            this.hp = Math.min(this.maxHp, this.hp + Math.floor(this.maxHp * 0.1));
+            // Damage nearby enemies handled in main.js via player._holyNovaTrigger
+            this._holyNovaTrigger = true;
+        }
+        // Stationary detection for shield wall
+        const dx = this.x - this._lastX;
+        const dy = this.y - this._lastY;
+        if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) {
+            this._stationaryTime += dt;
+        } else {
+            this._stationaryTime = 0;
+        }
+        this._lastX = this.x;
+        this._lastY = this.y;
+
+        // Purification aura triggers
+        if (this._purificationTimer > 0) this._purificationActive = true;
+        // Battle cry buff for atk
+        if (this._battleCryTimer > 0) this._battleCryActive = true;
+        else this._battleCryActive = false;
 
         // Cooldowns
         for (const key of Object.keys(this.skillCooldowns)) {
