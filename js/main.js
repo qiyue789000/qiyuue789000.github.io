@@ -579,7 +579,73 @@ class Game {
                     speed: [30, 90], life: [0.2, 0.5], color: '#9b59b6', size: [2, 5]
                 });
             } else if (eff.buff) {
-                // Buffs handled internally by player
+                // Skill-specific visual effects
+                switch (eff.buff) {
+                    case 'berserk':
+                        this.particles.emit(this.player.x, this.player.y, 8, { speed: [40,120], life:[0.3,0.6], color:'#e74c3c', size:[2,5] });
+                        this.renderer.flashScreen('#f44', 0.06);
+                        break;
+                    case 'battle_cry':
+                        this.particles.emit(this.player.x, this.player.y, 10, { speed: [30,100], life:[0.3,0.7], color:'#f39c12', size:[2,6] });
+                        this.particles.particles.push(new RingParticle(this.player.x, this.player.y, 0, 100, 0.4, '#f39c12'));
+                        break;
+                    case 'roundhouse':
+                        this.particles.emit(this.player.x, this.player.y, 12, { speed: [50,150], life:[0.2,0.5], color:'#fff', size:[2,5], spread:Math.PI*2 });
+                        this.renderer.screenShake(3, 0.15);
+                        break;
+                    case 'holy_light':
+                        this.particles.emitHeal(this.player.x, this.player.y);
+                        this.particles.emit(this.player.x, this.player.y, 10, { speed: [20,80], life:[0.4,0.8], color:'#f1c40f', size:[2,5], gravity:-40 });
+                        break;
+                    case 'guardian_shield':
+                        this.particles.emit(this.player.x, this.player.y, 15, { speed: [10,50], life:[0.5,1.0], color:'#f1c40f', size:[2,6], spread:Math.PI*2 });
+                        this.particles.particles.push(new RingParticle(this.player.x, this.player.y, 0, 80, 0.5, '#f1c40f'));
+                        break;
+                    case 'purification':
+                        this.particles.emit(this.player.x, this.player.y, 12, { speed: [30,90], life:[0.4,0.8], color:'#fff', size:[1,4], gravity:-30 });
+                        this.renderer.flashScreen('#fff', 0.04);
+                        break;
+                    case 'shield_bash':
+                        this.particles.emit(this.player.x, this.player.y, 8, { speed: [60,180], life:[0.15,0.4], color:'#ddd', size:[2,6] });
+                        this.renderer.screenShake(5, 0.2);
+                        break;
+                    case 'iron_fortress':
+                        this.particles.emit(this.player.x, this.player.y, 15, { speed: [20,70], life:[0.5,1.0], color:'#8899aa', size:[3,7], spread:Math.PI*2 });
+                        this.particles.particles.push(new RingParticle(this.player.x, this.player.y, 0, 100, 0.6, '#8899aa'));
+                        break;
+                    case 'holy_charge':
+                        for (let i=0;i<8;i++) this.particles.emit(this.player.x, this.player.y, 3, { speed:[60,150], life:[0.2,0.4], color:'#f1c40f', size:[1,3] });
+                        break;
+                    case 'shadow_strike':
+                        this.particles.emit(this.player.x, this.player.y, 12, { speed: [40,130], life:[0.15,0.35], color:'#2c2c3a', size:[2,5] });
+                        this.renderer.flashScreen('#1a1a2e', 0.08);
+                        break;
+                    case 'smoke':
+                        this.particles.emit(this.player.x, this.player.y, 20, { speed: [10,40], life:[0.5,1.2], color:'#888', size:[3,8], gravity:-15 });
+                        this.renderer.flashScreen('#888', 0.05);
+                        break;
+                    case 'shuriken':
+                        this.renderer.screenShake(2, 0.1);
+                        break;
+                    case 'missiles':
+                        this.particles.emit(this.player.x, this.player.y, 8, { speed: [20,70], life:[0.3,0.6], color:'#a855f7', size:[2,4] });
+                        break;
+                    case 'blizzard':
+                        this.renderer.flashScreen('#87ceeb', 0.06);
+                        break;
+                    case 'mana_burst':
+                        this.particles.emit(this.player.x, this.player.y, 20, { speed: [80,250], life:[0.3,0.7], color:'#a855f7', size:[3,8], spread:Math.PI*2 });
+                        this.particles.particles.push(new RingParticle(this.player.x, this.player.y, 0, 160, 0.5, '#a855f7'));
+                        this.renderer.screenShake(6, 0.3);
+                        this.renderer.flashScreen('#a855f7', 0.08);
+                        break;
+                    case 'clones':
+                        this.particles.emit(this.player.x, this.player.y, 10, { speed: [30,80], life:[0.3,0.6], color:'#fff', size:[1,3], spread:Math.PI*2 });
+                        break;
+                    case 'meteor':
+                        this.renderer.screenShake(3, 0.15);
+                        break;
+                }
             } else if (eff.enemy) {
                 const died = eff.enemy.takeDamage(eff.damage);
                 this.damageNumbers.push({

@@ -1,11 +1,12 @@
 import { rand, choice, dist } from './utils.js';
 
 const TILE = 32;
-const GRID_COLS = 4;
-const GRID_ROWS = 4;
-const ROOM_SPACING = 380;
-const MIN_ROOM_SIZE = 7;
-const MAX_ROOM_SIZE = 10;
+const MAIN_PATH_LENGTH_MIN = 5;
+const MAIN_PATH_LENGTH_MAX = 7;
+const ROOM_W_MIN = 9;
+const ROOM_W_MAX = 12;
+const ROOM_H_MIN = 8;
+const ROOM_H_MAX = 11;
 
 export const ROOM_TYPES = {
     START:    'start',
@@ -16,23 +17,21 @@ export const ROOM_TYPES = {
 };
 
 export class Room {
-    constructor(gridX, gridY, tileW, tileH) {
-        this.gridX = gridX;
-        this.gridY = gridY;
-        this.tileW = tileW;
-        this.tileH = tileH;
-        this.px = gridX * ROOM_SPACING + rand(0, 40);
-        this.py = gridY * ROOM_SPACING + rand(0, 40);
-        this.pw = tileW * TILE;
-        this.ph = tileH * TILE;
-        this.cx = this.px + this.pw / 2;
-        this.cy = this.py + this.ph / 2;
+    constructor(px, py, pw, ph, id) {
+        this.px = px;
+        this.py = py;
+        this.pw = pw;
+        this.ph = ph;
+        this.cx = px + pw / 2;
+        this.cy = py + ph / 2;
         this.type = ROOM_TYPES.BATTLE;
-        this.doors = { top: false, bottom: false, left: false, right: false };
         this.cleared = false;
         this.enemies = [];
         this.visited = false;
-        this.id = `room_${gridX}_${gridY}`;
+        this.id = id || `room_${px}_${py}`;
+        // For branch rooms
+        this.branch = null;
+        this.parent = null;
     }
 
     containsPoint(x, y) {
@@ -55,12 +54,10 @@ export class Dungeon {
         this.rooms = [];
         this.corridors = [];
         this.wallRects = [];
-        this.gridCols = GRID_COLS;
-        this.gridRows = GRID_ROWS;
-        this.pixelWidth = GRID_COLS * ROOM_SPACING + MAX_ROOM_SIZE * TILE;
-        this.pixelHeight = GRID_ROWS * ROOM_SPACING + MAX_ROOM_SIZE * TILE;
         this.startRoom = null;
         this.bossRoom = null;
+        this.pixelWidth = 3000;
+        this.pixelHeight = 1800;
         this.generate();
     }
 
@@ -69,134 +66,82 @@ export class Dungeon {
         this.corridors = [];
         this.wallRects = [];
 
-        // Generate rooms on a grid with random sizes
-        const grid = [];
-        for (let gy = 0; gy < GRID_ROWS; gy++) {
-            grid[gy] = [];
-            for (let gx = 0; gx < GRID_COLS; gx++) {
-                // Skip ~40% of grid cells for open exploration feel
-                if (Math.random() < 0.45) {
-                    grid[gy][gx] = null;
-                    continue;
-                }
-                const tw = rand(MIN_ROOM_SIZE, MAX_ROOM_SIZE);
-                const th = rand(MIN_ROOM_SIZE, MAX_ROOM_SIZE);
-                grid[gy][gx] = new Room(gx, gy, tw, th);
-                this.rooms.push(grid[gy][gx]);
-            }
-        }
+        // Main path: horizontal line of rooms
+        const mainCount = rand(MAIN_PATH_LENGTH_MIN, MAIN_PATH_LENGTH_MAX);
+        const startY = 800;
+        let curX = 100;
 
-        // Ensure at least 6 rooms
-        while (this.rooms.length < 6) {
-            const gx = rand(0, GRID_COLS - 1);
-            const gy = rand(0, GRID_ROWS - 1);
-            if (!grid[gy][gx]) {
-                const tw = rand(MIN_ROOM_SIZE, MAX_ROOM_SIZE);
-                const th = rand(MIN_ROOM_SIZE, MAX_ROOM_SIZE);
-                grid[gy][gx] = new Room(gx, gy, tw, th);
-                this.rooms.push(grid[gy][gx]);
-            }
-        }
-
-        // Connect rooms with corridors (minimum spanning tree + extra connections)
-        const edges = [];
-        for (let i = 0; i < this.rooms.length; i++) {
-            for (let j = i + 1; j < this.rooms.length; j++) {
-                const d = dist(this.rooms[i].cx, this.rooms[i].cy, this.rooms[j].cx, this.rooms[j].cy);
-                edges.push({ i, j, d });
-            }
-        }
-        edges.sort((a, b) => a.d - b.d);
-
-        // Union-find for MST
-        const parent = Array.from({ length: this.rooms.length }, (_, i) => i);
-        const find = (x) => parent[x] === x ? x : (parent[x] = find(parent[x]));
-        const union = (a, b) => { parent[find(a)] = find(b); };
-
-        const mstEdges = [];
-        for (const e of edges) {
-            if (find(e.i) !== find(e.j)) {
-                union(e.i, e.j);
-                mstEdges.push(e);
-            }
-        }
-
-        // Add some extra connections
-        const extraCount = Math.floor(this.rooms.length * 0.3);
-        for (const e of edges) {
-            if (extraCount <= 0) break;
-            if (!mstEdges.includes(e)) {
-                mstEdges.push(e);
-            }
-        }
-
-        // Build corridors
-        for (const e of mstEdges) {
-            const a = this.rooms[e.i];
-            const b = this.rooms[e.j];
-            this.addCorridor(a, b);
-        }
-
-        // Set room types
-        this.startRoom = this.rooms[0] || this.rooms.find(r => r);
+        // Create start room
+        const startW = rand(ROOM_W_MIN, ROOM_W_MAX) * TILE;
+        const startH = (ROOM_H_MIN + 2) * TILE;
+        this.startRoom = new Room(curX, startY - startH / 2, startW, startH, 'room_start');
         this.startRoom.type = ROOM_TYPES.START;
         this.startRoom.cleared = true;
         this.startRoom.visited = true;
+        this.rooms.push(this.startRoom);
+        curX += startW + rand(20, 40);
 
-        // Find farthest room for boss
-        let maxDist = 0;
-        let bossCandidate = this.rooms[1] || this.rooms[0];
-        for (const r of this.rooms) {
-            if (r === this.startRoom) continue;
-            const d = dist(this.startRoom.cx, this.startRoom.cy, r.cx, r.cy);
-            if (d > maxDist) { maxDist = d; bossCandidate = r; }
+        // Battle rooms along main path
+        for (let i = 0; i < mainCount; i++) {
+            const rw = rand(ROOM_W_MIN, ROOM_W_MAX) * TILE;
+            const rh = rand(ROOM_H_MIN, ROOM_H_MAX) * TILE;
+            const ry = startY - rh / 2 + rand(-60, 60);
+            const room = new Room(curX, ry, rw, rh, `room_main_${i}`);
+            this.rooms.push(room);
+            curX += rw + rand(20, 40);
         }
-        this.bossRoom = bossCandidate;
+
+        // Boss room at the end
+        const bossW = (ROOM_W_MAX + 2) * TILE;
+        const bossH = (ROOM_H_MAX + 2) * TILE;
+        this.bossRoom = new Room(curX, startY - bossH / 2, bossW, bossH, 'room_boss');
         this.bossRoom.type = ROOM_TYPES.BOSS;
+        this.rooms.push(this.bossRoom);
 
-        // Treasure room
-        const others = this.rooms.filter(r => r !== this.startRoom && r !== this.bossRoom);
-        if (others.length > 0) {
-            const treasure = choice(others);
-            if (treasure) treasure.type = ROOM_TYPES.TREASURE;
+        // Branch rooms
+        const branchCount = rand(1, 3);
+        const mainRooms = this.rooms.filter(r => r.type === ROOM_TYPES.BATTLE);
+        for (let i = 0; i < branchCount; i++) {
+            if (mainRooms.length === 0) break;
+            const parent = choice(mainRooms);
+            mainRooms.splice(mainRooms.indexOf(parent), 1); // don't reuse same room
+            const brw = rand(ROOM_W_MIN - 2, ROOM_W_MIN) * TILE;
+            const brh = rand(ROOM_H_MIN - 2, ROOM_H_MIN) * TILE;
+            const above = Math.random() > 0.5;
+            const bry = above ? parent.py - brh - rand(30, 60) : parent.py + parent.ph + rand(30, 60);
+            const brx = parent.cx - brw / 2 + rand(-40, 40);
+            const branch = new Room(brx, bry, brw, brh, `room_branch_${i}`);
+            branch.parent = parent;
+            parent.branch = branch;
+            this.rooms.push(branch);
         }
 
-        if (others.length > 1) {
-            const shopCandidate = others.find(r => r.type === ROOM_TYPES.BATTLE);
-            if (shopCandidate) shopCandidate.type = ROOM_TYPES.SHOP;
+        // Assign treasure and shop to branch rooms
+        const branches = this.rooms.filter(r => r.branch);
+        if (branches.length > 0) {
+            branches[0].type = ROOM_TYPES.TREASURE;
+        }
+        if (branches.length > 1) {
+            branches[1].type = ROOM_TYPES.SHOP;
         }
 
-        // Calculate wall rects for collision
+        // If no branches assigned shop, give it to a main room
+        if (!this.rooms.some(r => r.type === ROOM_TYPES.SHOP)) {
+            const mid = this.rooms[Math.floor(this.rooms.length / 2)];
+            if (mid && mid.type === ROOM_TYPES.BATTLE) mid.type = ROOM_TYPES.SHOP;
+        }
+
+        // Update pixel dimensions
+        this.pixelWidth = curX + bossW + 200;
+        this.pixelHeight = startY * 2;
+
         this.calculateWalls();
     }
 
-    addCorridor(a, b) {
-        // L-shaped corridor
-        const midX = a.cx;
-        const midY = b.cy;
-        this.corridors.push({ x1: a.cx, y1: a.cy, x2: midX, y2: a.cy });
-        this.corridors.push({ x1: midX, y1: a.cy, x2: midX, y2: b.cy });
-        this.corridors.push({ x1: midX, y1: b.cy, x2: b.cx, y2: b.cy });
-
-        // Set doors based on corridor geometry (vertical from a, then horizontal into b)
-        if (b.cy > a.cy) {
-            a.doors.bottom = true;
-        } else {
-            a.doors.top = true;
-        }
-        if (b.cx > a.cx) {
-            b.doors.left = true;
-        } else {
-            b.doors.right = true;
-        }
-    }
-
     calculateWalls() {
-        // Exploration mode: no walls, everything is walkable
         const cols = Math.ceil(this.pixelWidth / TILE);
         const rows = Math.ceil(this.pixelHeight / TILE);
-        const walkable = Array.from({ length: rows }, () => Array(cols).fill(true));
-        this.walkableGrid = walkable;
+        this.walkableGrid = Array.from({ length: rows }, () => Array(cols).fill(true));
         this.wallRects = [];
     }
 

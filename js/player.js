@@ -42,6 +42,9 @@ export class Player {
         this.hp = this.maxHp;
         this.mp = this.maxMp;
 
+        // Grant starting class skills at level 1
+        this._grantStartingSkills();
+
         // Passive states
         this.cheatDeathCooldown = 0;
         this.berserkTimer = 0;
@@ -186,6 +189,22 @@ export class Player {
             return true;
         }
         return false;
+    }
+
+    _grantStartingSkills() {
+        const cd = this.classDef;
+        // Grant first class active skill
+        const classActives = cd.uniqueActiveSkillIds.map(id => ALL_SKILLS_BY_ID[id]).filter(Boolean);
+        if (classActives.length > 0) {
+            const firstSkill = classActives[0];
+            this.skills.push({ ...firstSkill, level: 1 });
+            this.skillCooldowns[firstSkill.name] = 0;
+        }
+        // Grant first class passive
+        const classPassives = CLASS_PASSIVE_SKILLS[this.classId] || [];
+        if (classPassives.length > 0) {
+            this.passives.push({ ...classPassives[0] });
+        }
     }
 
     unlockSkills() {

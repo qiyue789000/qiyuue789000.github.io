@@ -124,15 +124,27 @@ export class Renderer {
             }
         }
 
-        // Draw corridors (wider for open exploration)
-        ctx.strokeStyle = '#1a1a2e';
-        ctx.lineWidth = 32;
+        // Linear dungeon: draw connecting paths between adjacent rooms
+        ctx.strokeStyle = '#151525';
+        ctx.lineWidth = 28;
         ctx.lineCap = 'round';
-        for (const cor of dungeon.corridors) {
+        for (let i = 1; i < dungeon.rooms.length; i++) {
+            const a = dungeon.rooms[i - 1];
+            const b = dungeon.rooms[i];
+            if (b.parent) continue; // branch rooms handled separately
             ctx.beginPath();
-            ctx.moveTo(cor.x1 - cx, cor.y1 - cy);
-            ctx.lineTo(cor.x2 - cx, cor.y2 - cy);
+            ctx.moveTo(a.cx - cx, a.cy - cy);
+            ctx.lineTo(b.cx - cx, b.cy - cy);
             ctx.stroke();
+        }
+        // Draw branch connections
+        for (const room of dungeon.rooms) {
+            if (room.parent) {
+                ctx.beginPath();
+                ctx.moveTo(room.cx - cx, room.cy - cy);
+                ctx.lineTo(room.parent.cx - cx, room.parent.cy - cy);
+                ctx.stroke();
+            }
         }
         ctx.lineWidth = 1;
         ctx.lineCap = 'butt';
@@ -784,12 +796,17 @@ export class Renderer {
         ctx.textAlign = 'start';
     }
 
-    drawMinimap(dungeon, player, minimapSize = 140) {
+    drawMinimap(dungeon, player, minimapSize = 150) {
         const ctx = this.ctx;
-        const mx = this.width - minimapSize - 12;
-        const my = 12;
-        const scaleX = minimapSize / dungeon.pixelWidth;
-        const scaleY = minimapSize / dungeon.pixelHeight;
+        const mx = this.width - minimapSize - 8;
+        const my = 8;
+        // Linear dungeon: scale to fit horizontal layout
+        const padding = 100;
+        const mapW = dungeon.pixelWidth + padding * 2;
+        const mapH = dungeon.pixelHeight + padding;
+        const scaleX = minimapSize / mapW;
+        const scaleY = (minimapSize * 0.7) / mapH;
+        const offX = padding;
 
         // Background
         ctx.fillStyle = 'rgba(0,0,0,0.6)';
@@ -798,9 +815,9 @@ export class Renderer {
         ctx.lineWidth = 1;
         ctx.strokeRect(mx - 2, my - 2, minimapSize + 4, minimapSize + 4);
 
-        // Rooms - show all rooms
+        // Rooms - show all rooms with offset
         for (const room of dungeon.rooms) {
-            const rx = mx + room.px * scaleX;
+            const rx = mx + (room.px + offX) * scaleX;
             const ry = my + room.py * scaleY;
             const rw = room.pw * scaleX;
             const rh = room.ph * scaleY;
@@ -820,7 +837,7 @@ export class Renderer {
         }
 
         // Player
-        const px = mx + player.x * scaleX;
+        const px = mx + (player.x + offX) * scaleX;
         const py = my + player.y * scaleY;
         ctx.fillStyle = '#fff';
         ctx.beginPath();
