@@ -86,6 +86,39 @@ export function generateItem(floor = 1, slot = null) {
     };
 }
 
+// ─── Potions ───
+export function createHpPotion(floor = 1) {
+    return {
+        id: uid(),
+        name: '生命药水',
+        type: 'consumable',
+        subType: 'hp',
+        slot: 'consumable',
+        rarity: 'COMMON',
+        rarityName: '普通',
+        color: '#e74c3c',
+        healPercent: 0.35 + floor * 0.03,
+        desc: `恢复 ${Math.floor((0.35 + floor * 0.03) * 100)}% 最大生命值`,
+        price: 20 + floor * 6
+    };
+}
+
+export function createMpPotion(floor = 1) {
+    return {
+        id: uid(),
+        name: '法力药水',
+        type: 'consumable',
+        subType: 'mp',
+        slot: 'consumable',
+        rarity: 'COMMON',
+        rarityName: '普通',
+        color: '#3498db',
+        manaPercent: 0.35 + floor * 0.03,
+        desc: `恢复 ${Math.floor((0.35 + floor * 0.03) * 100)}% 最大法力值`,
+        price: 15 + floor * 5
+    };
+}
+
 export function generateDrop(floor) {
     const items = [];
     const count = rand(0, 3);

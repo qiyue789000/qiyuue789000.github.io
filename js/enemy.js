@@ -29,6 +29,7 @@ export class Enemy {
         this.projectiles = [];
         this.isRanged = config.isRanged || false;
         this.projectileSpeed = config.projectileSpeed || 200;
+        this.projectileColor = config.projectileColor || '#f44';
         this.color = config.color || '#4a4';
         this.hitFlash = 0;
         this.animTimer = randFloat(0, Math.PI * 2);
@@ -137,7 +138,7 @@ export class Enemy {
             const p = createProjectile(
                 this.x, this.y, player.x, player.y,
                 this.projectileSpeed, this.atk,
-                this.color === '#4a4' ? '#a4f' : '#f44', 4
+                this.projectileColor, 4
             );
             this.projectiles.push(p);
             return { type: 'ranged', projectile: p };
@@ -208,7 +209,8 @@ export function createShadowMage(x, y, floor = 1) {
         radius: 12,
         color: '#9b59b6',
         isRanged: true,
-        projectileSpeed: 180
+        projectileSpeed: 180,
+        projectileColor: '#c39bdb'
     });
 }
 
@@ -231,7 +233,7 @@ export function createStoneGolem(x, y, floor = 1) {
 }
 
 export function createBoss(x, y, floor = 1) {
-    const scale = 1 + (floor - 1) * 0.2;
+    const scale = floor === 1 ? 0.7 : (1 + (floor - 1) * 0.2);
     const boss = new Enemy(x, y, {
         name: '地牢守卫',
         type: 'boss',
@@ -259,7 +261,7 @@ export function spawnEnemiesForRoom(room, floor) {
 
     switch (room.type) {
         case 'battle': {
-            const count = rand(2, 3 + Math.floor(floor / 3));
+            const count = floor === 1 ? rand(1, 2) : rand(2, 3 + Math.floor(floor / 3));
             for (let i = 0; i < count; i++) {
                 const p = room.randomPosition;
                 const roll = Math.random();

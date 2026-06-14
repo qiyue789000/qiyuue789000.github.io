@@ -1,8 +1,8 @@
 import { Player } from './player.js';
 import { Dungeon } from './dungeon.js';
 import { spawnEnemiesForRoom } from './enemy.js';
-import { updateProjectile, inAttackRange } from './combat.js';
-import { generateDrop, generateItem } from './items.js';
+import { calcDamage, updateProjectile, inAttackRange } from './combat.js';
+import { generateDrop, generateItem, createHpPotion } from './items.js';
 import { Renderer } from './renderer.js';
 import { ParticleSystem, RingParticle } from './particles.js';
 import { UI } from './ui.js';
@@ -65,6 +65,7 @@ class Game {
         this.allProjectiles = [];
         this.damageNumbers = [];
         this.gameOver = false;
+        this.tutorialActive = false;
         this.currentRoom = null;
 
         // Timing
@@ -75,6 +76,13 @@ class Game {
 
         // Pickup items on ground
         this.groundItems = [];
+
+        // Clones (分身术)
+        this.clones = [];
+        // Delayed effects (陨石 etc.)
+        this.delayedEffects = [];
+        // Chain lightning visual arcs
+        this.chainLightnings = [];
 
         this.init();
     }
@@ -88,6 +96,9 @@ class Game {
         this.allProjectiles = [];
         this.damageNumbers = [];
         this.groundItems = [];
+        this.clones = [];
+        this.delayedEffects = [];
+        this.chainLightnings = [];
         this.gameOver = false;
         this.currentRoom = this.dungeon.startRoom;
         this.dungeon.startRoom.visited = true;
@@ -96,13 +107,28 @@ class Game {
         this.ui.setPlayerRef(this.player);
         this.ui.showFloorIndicator(1);
 
-        // Give starter weapon
+        // Give starter weapon and a health potion
         this.player.equipItem(generateItem(1, 'weapon'));
+        this.player.inventory.push(createHpPotion(1));
     }
 
     start() {
-        this.lastTime = performance.now();
-        this.loop(this.lastTime);
+        // Check if tutorial should be shown
+        const tutorialDone = localStorage.getItem('roguelike_tutorial_done');
+        if (!tutorialDone) {
+            this.tutorialActive = true;
+            this.lastTime = performance.now();
+            // Start rendering (shows dungeon behind tutorial) but pause updates
+            this.loop(this.lastTime);
+            this.ui.showTutorial(() => {
+                this.tutorialActive = false;
+                localStorage.setItem('roguelike_tutorial_done', '1');
+                this.lastTime = performance.now(); // Reset timer to avoid huge dt
+            });
+        } else {
+            this.lastTime = performance.now();
+            this.loop(this.lastTime);
+        }
     }
 
     loop(timestamp) {
@@ -128,6 +154,7 @@ class Game {
     }
 
     update(dt) {
+        if (this.tutorialActive) return;
         // Update input world coords
         this.input.update(this.renderer.camera);
 
@@ -168,6 +195,14 @@ class Game {
                     }
                     if (died) {
                         this.onEnemyKilled(hit.enemy);
+                    }
+                }
+                // Lifesteal from melee attacks
+                if (hits.length > 0 && this.player.lifesteal > 0) {
+                    const totalDmg = hits.reduce((s, h) => s + h.damage, 0);
+                    const healAmt = Math.floor(totalDmg * this.player.lifesteal);
+                    if (healAmt > 0) {
+                        this.player.hp = Math.min(this.player.maxHp, this.player.hp + healAmt);
                     }
                 }
             }
@@ -216,6 +251,15 @@ class Game {
                             life: 0.8
                         });
                         this.particles.emitHit(this.player.x, this.player.y);
+                        // Thorns reflection
+                        if (this.player.thornsTimer > 0 && enemy) {
+                            const reflectDmg = Math.floor(attackResult.damage * 0.5);
+                            const enemyDied = enemy.takeDamage(reflectDmg);
+                            this.particles.emit(enemy.x, enemy.y, 4, {
+                                speed: [20, 70], life: [0.2, 0.4], color: '#2ecc71', size: [1, 3]
+                            });
+                            if (enemyDied) this.onEnemyKilled(enemy);
+                        }
                     }
                     if (this.player.isDead) {
                         this.gameOver = true;
@@ -266,6 +310,92 @@ class Game {
         // Update particles
         this.particles.update(dt);
 
+        // Update clones
+        for (let i = this.clones.length - 1; i >= 0; i--) {
+            const c = this.clones[i];
+            c.life -= dt;
+            c.animTimer += dt;
+            if (c.life <= 0) {
+                this.particles.emit(c.x, c.y, 6, {
+                    speed: [20, 60], life: [0.2, 0.4], color: '#fff', size: [1, 3]
+                });
+                this.clones.splice(i, 1);
+                continue;
+            }
+            // Follow player loosely
+            const targetX = this.player.x + c.offsetX;
+            const targetY = this.player.y + c.offsetY;
+            c.x += (targetX - c.x) * 4 * dt;
+            c.y += (targetY - c.y) * 4 * dt;
+            // Auto-attack nearby enemies
+            c.attackCooldown -= dt;
+            if (c.attackCooldown <= 0) {
+                for (const enemy of this.enemies) {
+                    if (enemy.isDead) continue;
+                    if (dist(c.x, c.y, enemy.x, enemy.y) < 55) {
+                        c.attackCooldown = c.attackSpeed;
+                        const { damage, crit } = calcDamage(c.damage, enemy.def, 0.05, 1.5);
+                        const died = enemy.takeDamage(damage);
+                        this.damageNumbers.push({
+                            x: enemy.x, y: enemy.y,
+                            amount: damage, crit, life: 0.6
+                        });
+                        this.particles.emitHit(enemy.x, enemy.y);
+                        if (died) this.onEnemyKilled(enemy);
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Process delayed effects
+        for (let i = this.delayedEffects.length - 1; i >= 0; i--) {
+            const eff = this.delayedEffects[i];
+            eff.delay -= dt;
+            if (eff.delay <= 0) {
+                // Execute effect
+                if (eff.type === 'meteor') {
+                    this.particles.emit(eff.x, eff.y, 30, {
+                        speed: [60, 300], life: [0.4, 1.0], color: '#e74c3c', size: [3, 10], gravity: 80
+                    });
+                    this.particles.particles.push(new RingParticle(eff.x, eff.y, 0, 110, 0.5, '#e74c3c'));
+                    this.particles.particles.push(new RingParticle(eff.x, eff.y, 0, 80, 0.35, '#f39c12'));
+                    this.renderer.screenShake(8, 0.4);
+                    this.renderer.flashScreen('#f44', 0.1);
+                    for (const enemy of this.enemies) {
+                        if (enemy.isDead) continue;
+                        if (dist(eff.x, eff.y, enemy.x, enemy.y) < eff.radius) {
+                            const { damage, crit } = calcDamage(eff.damage, enemy.def, eff.crit, eff.critMult);
+                            const died = enemy.takeDamage(damage);
+                            this.damageNumbers.push({
+                                x: enemy.x, y: enemy.y,
+                                amount: damage, crit, life: 0.8
+                            });
+                            this.particles.emitHit(enemy.x, enemy.y);
+                            if (died) this.onEnemyKilled(enemy);
+                        }
+                    }
+                }
+                this.delayedEffects.splice(i, 1);
+            }
+        }
+
+        // Update chain lightning visuals
+        for (let i = this.chainLightnings.length - 1; i >= 0; i--) {
+            this.chainLightnings[i].life -= dt;
+            if (this.chainLightnings[i].life <= 0) this.chainLightnings.splice(i, 1);
+        }
+
+        // Potion hotkey (Q)
+        if (justPressed['KeyQ']) {
+            const hpPotion = this.player.inventory.find(item => item.type === 'consumable' && item.subType === 'hp');
+            if (hpPotion) {
+                this.player.usePotion(hpPotion);
+                this.player.inventory.splice(this.player.inventory.indexOf(hpPotion), 1);
+                this.particles.emitHeal(this.player.x, this.player.y);
+            }
+        }
+
         // Pickup ground items
         for (let i = this.groundItems.length - 1; i >= 0; i--) {
             const item = this.groundItems[i];
@@ -288,6 +418,12 @@ class Game {
         for (const eff of result.effects) {
             if (eff.heal) {
                 this.particles.emitHeal(this.player.x, this.player.y);
+            } else if (eff.blink) {
+                this.particles.emit(this.player.x, this.player.y, 10, {
+                    speed: [30, 90], life: [0.2, 0.5], color: '#9b59b6', size: [2, 5]
+                });
+            } else if (eff.buff) {
+                // Buffs handled internally by player
             } else if (eff.enemy) {
                 const died = eff.enemy.takeDamage(eff.damage);
                 this.damageNumbers.push({
@@ -297,12 +433,57 @@ class Game {
                 if (eff.crit) {
                     this.particles.emitCritHit(eff.enemy.x, eff.enemy.y);
                     this.renderer.screenShake(3, 0.1);
+                } else if (eff.chain) {
+                    this.particles.emit(eff.enemy.x, eff.enemy.y, 5, {
+                        speed: [30, 100], life: [0.15, 0.35], color: '#3498db', size: [1, 3]
+                    });
                 } else {
                     this.particles.emitHit(eff.enemy.x, eff.enemy.y);
                 }
                 if (died) this.onEnemyKilled(eff.enemy);
             }
         }
+        // Chain lightning visual
+        if (result.chainOrigin && result.chainTargets) {
+            this.chainLightnings.push({
+                points: [result.chainOrigin, ...result.chainTargets],
+                life: 0.35
+            });
+        }
+        // Lifesteal from skill damage
+        if (this.player.lifesteal > 0) {
+            const skillDmg = result.effects.filter(e => e.enemy && e.damage).reduce((s, e) => s + e.damage, 0);
+            if (skillDmg > 0) {
+                const healAmt = Math.floor(skillDmg * this.player.lifesteal);
+                if (healAmt > 0) {
+                    this.player.hp = Math.min(this.player.maxHp, this.player.hp + healAmt);
+                }
+            }
+        }
+    }
+
+    spawnClones(count, duration) {
+        for (let i = 0; i < count; i++) {
+            const offsetX = (Math.random() - 0.5) * 40;
+            const offsetY = (Math.random() - 0.5) * 40;
+            this.clones.push({
+                x: this.player.x + offsetX,
+                y: this.player.y + offsetY,
+                offsetX, offsetY,
+                life: duration,
+                attackCooldown: 0,
+                attackSpeed: 0.8,
+                damage: Math.floor(this.player.atk * 0.5),
+                animTimer: Math.random() * Math.PI * 2
+            });
+        }
+        this.particles.emit(this.player.x, this.player.y, 15, {
+            speed: [30, 100], life: [0.3, 0.7], color: '#fff', size: [2, 5]
+        });
+    }
+
+    addDelayedEffect(effect) {
+        this.delayedEffects.push(effect);
     }
 
     onEnterRoom(room) {
@@ -374,6 +555,9 @@ class Game {
         this.enemies = [];
         this.allProjectiles = [];
         this.groundItems = [];
+        this.clones = [];
+        this.delayedEffects = [];
+        this.chainLightnings = [];
         this.damageNumbers = [];
         this.currentRoom = this.dungeon.startRoom;
         this.dungeon.startRoom.visited = true;
@@ -393,7 +577,7 @@ class Game {
         for (const gi of this.groundItems) {
             const ix = gi.x - this.renderer.sx;
             const iy = gi.y - this.renderer.sy;
-            const bob = Math.sin(Date.now() / 300 + gi.x) * 1;
+            const bob = Math.sin(this.renderer.animTime * 3.33 + gi.x) * 1;
             const glowColors = { COMMON: '#aaa', RARE: '#3498db', EPIC: '#9b59b6', LEGENDARY: '#e67e22' };
             const glowColor = glowColors[gi.item.rarity] || '#fff';
             // Glow
@@ -432,6 +616,23 @@ class Game {
 
         // Draw projectiles
         this.renderer.drawProjectiles(this.allProjectiles);
+
+        // Draw clones
+        for (const c of this.clones) {
+            this.renderer.drawClone(c);
+        }
+
+        // Draw meteor indicators
+        for (const eff of this.delayedEffects) {
+            if (eff.type === 'meteor') {
+                this.renderer.drawMeteorIndicator(eff);
+            }
+        }
+
+        // Draw chain lightning
+        for (const cl of this.chainLightnings) {
+            this.renderer.drawChainLightning(cl);
+        }
 
         // Draw damage numbers
         for (const dn of this.damageNumbers) {

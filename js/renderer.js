@@ -13,6 +13,7 @@ export class Renderer {
         this.shakeTimer = 0;
         this.screenFlash = 0;
         this.screenFlashColor = '#fff';
+        this.animTime = 0; // deterministic animation timer in seconds
     }
 
     screenShake(intensity = 4, duration = 0.2) {
@@ -35,6 +36,7 @@ export class Renderer {
     }
 
     update(dt) {
+        this.animTime += dt;
         if (this.shakeTimer > 0) {
             this.shakeTimer -= dt;
             if (this.shakeTimer <= 0) this.shakeIntensity = 0;
@@ -203,7 +205,7 @@ export class Renderer {
             const ringColors = { COMMON: 'rgba(170,170,170,0.15)', RARE: 'rgba(52,152,219,0.2)', EPIC: 'rgba(155,89,182,0.25)', LEGENDARY: 'rgba(230,126,34,0.35)' };
             ctx.fillStyle = ringColors[ring.rarity] || 'rgba(255,255,255,0.1)';
             ctx.beginPath();
-            ctx.arc(px, py, r + 7 + Math.sin(Date.now() / 500) * 2, 0, Math.PI * 2);
+            ctx.arc(px, py, r + 7 + Math.sin(this.animTime * 2) * 2, 0, Math.PI * 2);
             ctx.fill();
         }
 
@@ -215,7 +217,7 @@ export class Renderer {
                 ctx.fillStyle = glow.color + '4d';
             }
             ctx.beginPath();
-            ctx.arc(px, py, r + glow.size + Math.sin(Date.now() / 400) * 2, 0, Math.PI * 2);
+            ctx.arc(px, py, r + glow.size + Math.sin(this.animTime * 2.5) * 2, 0, Math.PI * 2);
             ctx.fill();
         }
 
@@ -324,7 +326,7 @@ export class Renderer {
             orbGlow.addColorStop(1, 'rgba(0,0,0,0)');
             ctx.fillStyle = orbGlow;
             ctx.beginPath();
-            ctx.arc(wandTipX, wandTipY, 6 + Math.sin(Date.now() / 200) * 1.5, 0, Math.PI * 2);
+            ctx.arc(wandTipX, wandTipY, 6 + Math.sin(this.animTime * 5) * 1.5, 0, Math.PI * 2);
             ctx.fill();
         }
 
@@ -685,6 +687,101 @@ export class Renderer {
         ctx.beginPath();
         ctx.arc(px, py, 3, 0, Math.PI * 2);
         ctx.fill();
+    }
+
+    // ─── Clone drawing ───
+    drawClone(c) {
+        const ctx = this.ctx;
+        const px = c.x - this.sx;
+        const py = c.y - this.sy;
+        if (px < -40 || px > this.width + 40 || py < -40 || py > this.height + 40) return;
+
+        const alpha = Math.max(0.15, c.life / 8 * 0.55);
+        ctx.globalAlpha = alpha;
+        // Body
+        ctx.fillStyle = '#aaddff';
+        ctx.beginPath();
+        ctx.arc(px, py, 10, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+        // Eyes
+        ctx.fillStyle = '#fff';
+        ctx.beginPath();
+        ctx.arc(px - 3, py - 3, 2, 0, Math.PI * 2);
+        ctx.arc(px + 3, py - 3, 2, 0, Math.PI * 2);
+        ctx.fill();
+        // Fade pulse
+        const pulse = Math.sin(c.animTimer * 6) * 0.15 + 0.2;
+        ctx.fillStyle = `rgba(200,220,255,${pulse})`;
+        ctx.beginPath();
+        ctx.arc(px, py, 14, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+    }
+
+    // ─── Meteor indicator ───
+    drawMeteorIndicator(eff) {
+        const ctx = this.ctx;
+        const px = eff.x - this.sx;
+        const py = eff.y - this.sy;
+        const progress = 1 - (eff.delay / 0.8);
+        const radius = 20 + progress * 80;
+        const alpha = 0.3 + progress * 0.5;
+
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        // Warning circle
+        ctx.strokeStyle = '#e74c3c';
+        ctx.lineWidth = 3;
+        ctx.setLineDash([8, 4]);
+        ctx.beginPath();
+        ctx.arc(px, py, radius, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        // Center dot
+        ctx.fillStyle = '#f44';
+        ctx.beginPath();
+        ctx.arc(px, py, 4 + Math.sin(this.animTime * 15) * 2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+    }
+
+    // ─── Chain lightning arcs ───
+    drawChainLightning(cl) {
+        const ctx = this.ctx;
+        const alpha = cl.life / 0.35;
+        ctx.save();
+        ctx.globalAlpha = alpha * 0.8;
+        ctx.strokeStyle = '#5dade2';
+        ctx.lineWidth = 2.5;
+        ctx.shadowColor = '#3498db';
+        ctx.shadowBlur = 10;
+
+        const points = cl.points;
+        for (let i = 1; i < points.length; i++) {
+            const from = points[i - 1];
+            const to = points[i];
+            const fx = from.x - this.sx;
+            const fy = from.y - this.sy;
+            const tx = to.x - this.sx;
+            const ty = to.y - this.sy;
+            // Draw jagged lightning
+            ctx.beginPath();
+            ctx.moveTo(fx, fy);
+            const segments = 6;
+            for (let s = 1; s <= segments; s++) {
+                const t = s / segments;
+                const mx = fx + (tx - fx) * t;
+                const my = fy + (ty - fy) * t;
+                const jitter = (s < segments ? (Math.random() - 0.5) * 20 : 0);
+                ctx.lineTo(mx + jitter, my + jitter);
+            }
+            ctx.stroke();
+        }
+        ctx.shadowBlur = 0;
+        ctx.restore();
     }
 
     drawVignette() {

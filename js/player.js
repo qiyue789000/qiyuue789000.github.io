@@ -137,7 +137,9 @@ export class Player {
 
     get atk() {
         const base = this.baseAtk + (this.level - 1) * 2 + this._equipStatSum('atk');
-        return Math.floor(base * this._getPassiveMultiplier('atk') + this._getPassiveFlat('atk'));
+        let val = Math.floor(base * this._getPassiveMultiplier('atk') + this._getPassiveFlat('atk'));
+        if (this.berserkTimer > 0) val = Math.floor(val * 2);
+        return val;
     }
 
     get def() {
@@ -273,7 +275,7 @@ export class Player {
         if (index >= this.skills.length) return null;
         const skill = this.skills[index];
         if (this.skillCooldowns[skill.name] > 0) return null;
-        if (!this.useMana(skill.cost)) return null; // Not enough mana
+        if (!this.useMana(skill.cost)) return null;
 
         this.skillCooldowns[skill.name] = skill.cd;
         const result = { skill: skill.name, effects: [] };
@@ -329,17 +331,115 @@ export class Player {
                 result.effects.push({ buff: 'thorns' });
                 break;
             }
-            default: {
-                // Generic damage skill
-                for (const enemy of enemies) {
-                    if (!enemy.isDead && dist(this.x, this.y, enemy.x, enemy.y) < 100) {
-                        const { damage, crit } = calcDamage(this.atk * 1.3, enemy.def, this.crit, this.critMult);
-                        result.effects.push({ enemy, damage, crit });
+            case '暗影步': {
+                // Teleport to mouse position (max range 250)
+                const d = dist(this.x, this.y, mouseX, mouseY);
+                const maxRange = 250;
+                if (d <= maxRange) {
+                    this.x = mouseX;
+                    this.y = mouseY;
+                } else {
+                    const a = angle(this.x, this.y, mouseX, mouseY);
+                    this.x += Math.cos(a) * maxRange;
+                    this.y += Math.sin(a) * maxRange;
+                }
+                this.invincibleTimer = 0.1;
+                result.effects.push({ blink: true });
+                break;
+            }
+            case '连锁闪电': {
+                // Chain lightning: hits nearest enemy to mouse, bounces up to 4 times
+                const chainRange = 130;
+                const maxBounces = 4;
+                let dmgMult = 1.0;
+                const hitSet = new Set();
+                const alive = enemies.filter(e => !e.isDead);
+
+                // Find first target nearest to mouse
+                let first = null;
+                let firstDist = Infinity;
+                for (const e of alive) {
+                    const d = dist(mouseX, mouseY, e.x, e.y);
+                    if (d < chainRange && d < firstDist) {
+                        first = e;
+                        firstDist = d;
                     }
                 }
+
+                if (first) {
+                    const { damage, crit } = calcDamage(this.atk * 1.8, first.def, this.crit, this.critMult);
+                    result.effects.push({ enemy: first, damage, crit, chain: true });
+                    hitSet.add(first);
+                    // Add lightning visual reference
+                    result.chainOrigin = { x: this.x, y: this.y };
+                    result.chainTargets = [{ x: first.x, y: first.y }];
+                    let last = first;
+
+                    for (let b = 1; b < maxBounces; b++) {
+                        dmgMult *= 0.7;
+                        let next = null;
+                        let nextDist = chainRange;
+                        for (const e of alive) {
+                            if (hitSet.has(e)) continue;
+                            const d = dist(last.x, last.y, e.x, e.y);
+                            if (d < nextDist) {
+                                next = e;
+                                nextDist = d;
+                            }
+                        }
+                        if (!next) break;
+                        const { damage: dmg, crit: cr } = calcDamage(Math.floor(this.atk * 1.8 * dmgMult), next.def, this.crit, this.critMult);
+                        result.effects.push({ enemy: next, damage: dmg, crit: cr, chain: true });
+                        result.chainTargets.push({ x: next.x, y: next.y });
+                        hitSet.add(next);
+                        last = next;
+                    }
+                }
+                break;
+            }
+            case '分身术': {
+                // Summon 2 clones that fight for 8 seconds
+                if (game && game.spawnClones) {
+                    game.spawnClones(2, 8);
+                }
+                result.effects.push({ buff: 'clones' });
+                break;
+            }
+            case '陨石': {
+                // Delayed AoE at mouse position
+                if (game && game.addDelayedEffect) {
+                    game.addDelayedEffect({
+                        type: 'meteor',
+                        x: mouseX,
+                        y: mouseY,
+                        delay: 0.8,
+                        damage: this.atk * 3,
+                        crit: this.crit,
+                        critMult: this.critMult,
+                        radius: 110,
+                        color: '#e74c3c'
+                    });
+                }
+                result.effects.push({ buff: 'meteor' });
+                break;
             }
         }
         return result;
+    }
+
+    usePotion(item) {
+        if (!item || item.type !== 'consumable') return false;
+        if (item.subType === 'hp') {
+            const heal = Math.floor(this.maxHp * item.healPercent);
+            this.hp = Math.min(this.maxHp, this.hp + heal);
+            return true;
+        }
+        if (item.subType === 'mp') {
+            const restore = Math.floor(this.maxMp * item.manaPercent);
+            this.mp = Math.min(this.maxMp, this.mp + restore);
+            return true;
+        }
+        return false;
     }
 
     dash() {

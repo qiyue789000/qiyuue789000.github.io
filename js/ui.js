@@ -1,5 +1,5 @@
 import { SLOTS, SLOT_NAMES, SLOT_ICONS } from './items.js';
-import { generateItem, rollRarity } from './items.js';
+import { generateItem, rollRarity, createHpPotion, createMpPotion } from './items.js';
 
 const SKILL_KEYS = ['B', 'N', 'M'];
 
@@ -15,6 +15,7 @@ export class UI {
         this.levelUpTimeout = null;
         this.floorIndicatorTimeout = null;
         this._player = null;
+        this._hudFrameSkip = 0;
 
         document.addEventListener('keydown', (e) => {
             if (e.code === 'KeyI') this.toggleInventory();
@@ -24,6 +25,11 @@ export class UI {
 
     // ─── HUD ───────────────────────────────────────
     updateHUD(player, dungeon, currentRoom, fps) {
+        // Throttle HUD updates to every 3 frames (~20fps for DOM)
+        this._hudFrameSkip++;
+        if (this._hudFrameSkip < 3) return;
+        this._hudFrameSkip = 0;
+
         const xpPct = player.level >= 100 ? 100 : (player.xp / player.xpToNext * 100);
         const hpPct = (player.hp / player.maxHp * 100);
         const mpPct = (player.mp / player.maxMp * 100);
@@ -75,7 +81,7 @@ export class UI {
             </div>
             ${passivesHtml ? `<div style="margin-top:1px;">${passivesHtml}</div>` : ''}
             <div style="font-size:9px;color:#444;margin-top:1px;">
-                [WASD]移动 [鼠标左键]攻击 [空格]翻滚 [I]背包 [B/N/M]技能 [E]互动
+                [WASD]移动 [鼠标左键]攻击 [空格]翻滚 [Q]药水 [I]背包 [B/N/M]技能 [E]互动
             </div>
             ${currentRoom && currentRoom.type === 'shop' ? '<div style="font-size:13px;color:#f1c40f;margin-top:3px;animation:pulse 1s infinite;">🏪 按 [E] 打开商店</div>' : ''}
         `;
@@ -169,12 +175,15 @@ export class UI {
 
         // Inventory
         if (p.inventory.length > 0) {
-            html += '<div style="margin:10px 0;"><b>背包物品 (点击装备):</b></div>';
+            html += '<div style="margin:10px 0;"><b>背包物品 (点击装备/使用):</b></div>';
             for (let i = 0; i < p.inventory.length; i++) {
                 const item = p.inventory[i];
+                const isPotion = item.type === 'consumable';
+                const icon = isPotion ? '🧪' : (SLOT_ICONS[item.slot] || '📦');
+                const actionHint = isPotion ? '点击使用' : '点击装备';
                 html += `<div class="inv-slot inv-item" data-idx="${i}" style="cursor:pointer;">
-                    <span class="rarity-${item.rarity.toLowerCase()}">${SLOT_ICONS[item.slot]} ${item.name}</span>
-                    <span class="value" style="font-size:9px;">${item.desc}</span>
+                    <span style="color:${item.color || '#ccc'};">${icon} ${item.name}</span>
+                    <span class="value" style="font-size:9px;">${item.desc} <span style="color:#2ecc71;">${actionHint}</span></span>
                 </div>`;
             }
         }
@@ -204,7 +213,7 @@ export class UI {
             }
         }
 
-        html += '<div style="text-align:center;margin-top:10px;font-size:10px;color:#555;">按 I 或 ESC 关闭 | 点击背包物品装备</div>';
+        html += '<div style="text-align:center;margin-top:10px;font-size:10px;color:#555;">按 I/ESC 关闭 | 点击装备 | [Q]快速使用药水</div>';
 
         this.invPanel.innerHTML = html;
         this.invPanel.style.display = 'block';
@@ -213,7 +222,15 @@ export class UI {
             el.addEventListener('click', () => {
                 const idx = parseInt(el.dataset.idx);
                 if (p && p.inventory[idx]) {
-                    p.equipItem(p.inventory.splice(idx, 1)[0]);
+                    const item = p.inventory[idx];
+                    if (item.type === 'consumable') {
+                        // Use potion immediately
+                        if (p.usePotion(item)) {
+                            p.inventory.splice(idx, 1);
+                        }
+                    } else {
+                        p.equipItem(p.inventory.splice(idx, 1)[0]);
+                    }
                     this.showInventory(p);
                 }
             });
@@ -232,6 +249,11 @@ export class UI {
 
         if (!this._shopItems) {
             this._shopItems = [];
+            // Always add potions
+            this._shopPotions = [
+                createHpPotion(floor),
+                createMpPotion(floor)
+            ];
             for (let i = 0; i < 4; i++) {
                 const item = generateItem(floor);
                 item.price = this._calcBuyPrice(item);
@@ -242,7 +264,19 @@ export class UI {
         let html = '<h3>🏪 地下商店</h3>';
         html += `<div style="font-size:11px;color:#888;margin-bottom:6px;">你有 🪙${p.gold} 金币</div>`;
 
-        html += '<div style="margin-bottom:6px;"><b>出售中的装备:</b></div>';
+        // Potions section
+        html += '<div style="margin-bottom:6px;"><b>🧪 药水:</b></div>';
+        for (let i = 0; i < this._shopPotions.length; i++) {
+            const pot = this._shopPotions[i];
+            const canBuy = p.gold >= pot.price;
+            html += `<div class="shop-item potion-item ${canBuy ? '' : 'no-afford'}" data-potion-idx="${i}" style="cursor:${canBuy ? 'pointer' : 'not-allowed'};">
+                <span style="color:${pot.color};">🧪 ${pot.name}</span>
+                <span style="font-size:9px;color:#888;">${pot.desc}</span>
+                <span style="color:${canBuy ? '#f1c40f' : '#e74c3c'};font-weight:bold;">🪙${pot.price}</span>
+            </div>`;
+        }
+
+        html += '<div style="margin:10px 0;"><b>出售中的装备:</b></div>';
         for (let i = 0; i < this._shopItems.length; i++) {
             const item = this._shopItems[i];
             const canBuy = p.gold >= item.price;
@@ -257,9 +291,11 @@ export class UI {
         if (p.inventory.length > 0) {
             for (let i = 0; i < p.inventory.length; i++) {
                 const item = p.inventory[i];
-                const sellPrice = this._calcSellPrice(item);
+                const isPotion = item.type === 'consumable';
+                const icon = isPotion ? '🧪' : (SLOT_ICONS[item.slot] || '📦');
+                const sellPrice = isPotion ? Math.floor(item.price * 0.4) : this._calcSellPrice(item);
                 html += `<div class="shop-item sell-item" data-sell-idx="${i}" style="cursor:pointer;">
-                    <span class="rarity-${item.rarity.toLowerCase()}">${SLOT_ICONS[item.slot]} ${item.name}</span>
+                    <span style="color:${item.color || '#ccc'};">${icon} ${item.name}</span>
                     <span style="font-size:9px;color:#888;">${item.desc}</span>
                     <span style="color:#2ecc71;font-weight:bold;">出售 🪙${sellPrice}</span>
                 </div>`;
@@ -274,7 +310,22 @@ export class UI {
         this.shopPanel.style.display = 'block';
         this.hideInventory();
 
-        this.shopPanel.querySelectorAll('.shop-item:not(.sell-item)').forEach(el => {
+        // Potion purchase handlers (potions stay in shop, can buy multiple)
+        this.shopPanel.querySelectorAll('.potion-item').forEach(el => {
+            el.addEventListener('click', () => {
+                const idx = parseInt(el.dataset.potionIdx);
+                const pot = this._shopPotions[idx];
+                if (p && p.gold >= pot.price) {
+                    p.gold -= pot.price;
+                    // Create a fresh copy of the potion for inventory
+                    const newPot = pot.subType === 'hp' ? createHpPotion(floor) : createMpPotion(floor);
+                    p.inventory.push(newPot);
+                    this.showShop(p, floor);
+                }
+            });
+        });
+
+        this.shopPanel.querySelectorAll('.shop-item:not(.sell-item):not(.potion-item)').forEach(el => {
             el.addEventListener('click', () => {
                 const idx = parseInt(el.dataset.shopIdx);
                 const item = this._shopItems[idx];
@@ -292,7 +343,8 @@ export class UI {
                 const idx = parseInt(el.dataset.sellIdx);
                 if (p && p.inventory[idx]) {
                     const item = p.inventory[idx];
-                    p.gold += this._calcSellPrice(item);
+                    const sellPrice = item.type === 'consumable' ? Math.floor(item.price * 0.4) : this._calcSellPrice(item);
+                    p.gold += sellPrice;
                     p.inventory.splice(idx, 1);
                     this.showShop(p, floor);
                 }
@@ -303,6 +355,7 @@ export class UI {
     hideShop() {
         this.shopPanel.style.display = 'none';
         this._shopItems = null;
+        this._shopPotions = null;
     }
 
     _calcBuyPrice(item) {
@@ -316,5 +369,137 @@ export class UI {
 
     setPlayerRef(player) {
         this._player = player;
+    }
+
+    // ─── Tutorial ─────────────────────────────────
+    _initTutorial() {
+        this.tutorialOverlay = document.getElementById('tutorial-overlay');
+        this.tutorialTitle = document.getElementById('tutorial-title');
+        this.tutorialText = document.getElementById('tutorial-text');
+        this.tutorialIcon = document.getElementById('tutorial-icon');
+        this.tutorialHint = document.getElementById('tutorial-hint');
+        this.tutorialProgress = document.getElementById('tutorial-progress');
+        this.tutorialPrev = document.getElementById('tutorial-prev');
+        this.tutorialNext = document.getElementById('tutorial-next');
+        this.tutorialSkip = document.getElementById('tutorial-skip');
+        this.tutorialStep = 0;
+        this.tutorialCallback = null;
+
+        this._tutorialSteps = [
+            {
+                icon: '🏰',
+                title: '欢迎来到深渊探索者！',
+                text: '这是一款俯视角肉鸽地牢游戏。你将深入随机生成的地下城，击败敌人、收集装备、挑战强大的 Boss。让我们快速学习基本操作吧！',
+                hint: null
+            },
+            {
+                icon: '⬆️',
+                title: '移动（WASD）',
+                text: '使用 W A S D 键或方向键来控制角色移动。探索每个房间，发现宝藏、商店和敌人。小地图在右上角帮助你导航。',
+                hint: '💡 试试用 WASD 移动角色探索起始房间'
+            },
+            {
+                icon: '⚔️',
+                title: '攻击（鼠标左键）',
+                text: '按住鼠标左键朝敌人方向攻击。不同武器有不同的攻击形态——剑类劈砍、魔杖远程、拳套爆发等。暴击时伤害翻倍并有金色特效！',
+                hint: '💡 按住鼠标左键即可持续攻击'
+            },
+            {
+                icon: '💨',
+                title: '闪避翻滚（空格键）',
+                text: '按空格键向面朝方向翻滚。翻滚期间你处于无敌状态，可以穿过敌人和弹幕。冷却时间仅 1.5 秒，是生存的关键技巧！',
+                hint: '💡 危险时刻用空格翻滚脱离包围'
+            },
+            {
+                icon: '🔥',
+                title: '主动技能（B / N / M 键）',
+                text: '每 10 级解锁一个新技能。按 B、N、M 键释放对应的技能。技能消耗法力值（蓝条），不同技能有不同的冷却时间。法力会随时间自动恢复。',
+                hint: '💡 技能有蓝耗，注意法力管理。按 I 查看所有技能'
+            },
+            {
+                icon: '🧪',
+                title: '药水（Q 键）',
+                text: '按 Q 键快速使用背包中的生命药水。法力药水需要在背包中点击使用。药水可以在商店购买，也会出现在商店房间。',
+                hint: '💡 开局赠送 1 瓶生命药水，紧急时按 Q 救命'
+            },
+            {
+                icon: '🎒',
+                title: '背包与装备（I 键）',
+                text: '按 I 键打开背包。共 7 个装备槽：武器、头盔、护甲、鞋子、手套、项链、戒指。点击背包中的装备即可穿上。装备有普通/稀有/史诗/传说四种品质。',
+                hint: '💡 装备会影响角色外观！如武器改变攻击形态'
+            },
+            {
+                icon: '🏪',
+                title: '商店（E 键）',
+                text: '找到商店房间后（小地图黄色标记，屏幕有提示），按 E 键打开商店。可以购买装备和药水，也可以出售背包中不需要的物品换取金币。',
+                hint: '💡 商店每层只有一间，好好利用！'
+            },
+            {
+                icon: '💀',
+                title: '挑战深渊！',
+                text: '击败 Boss 房间的地牢守卫即可进入下一层。每层地牢随机生成，难度递增。达到 100 级即为巅峰！祝你探索愉快，深渊在等待着你...',
+                hint: '🎮 分享链接给你的好友，一起挑战深渊吧！'
+            }
+        ];
+    }
+
+    showTutorial(callback) {
+        if (!this.tutorialOverlay) this._initTutorial();
+        this.tutorialStep = 0;
+        this.tutorialCallback = callback;
+        this.tutorialOverlay.classList.add('active');
+        this._renderTutorialStep();
+
+        this.tutorialPrev.onclick = () => {
+            if (this.tutorialStep > 0) {
+                this.tutorialStep--;
+                this._renderTutorialStep();
+            }
+        };
+        this.tutorialNext.onclick = () => {
+            if (this.tutorialStep < this._tutorialSteps.length - 1) {
+                this.tutorialStep++;
+                this._renderTutorialStep();
+            } else {
+                this.hideTutorial();
+            }
+        };
+        this.tutorialSkip.onclick = () => this.hideTutorial();
+    }
+
+    _renderTutorialStep() {
+        const step = this._tutorialSteps[this.tutorialStep];
+        const total = this._tutorialSteps.length;
+        this.tutorialIcon.textContent = step.icon;
+        this.tutorialTitle.textContent = `(${this.tutorialStep + 1}/${total}) ${step.title}`;
+        this.tutorialText.textContent = step.text;
+        this.tutorialHint.innerHTML = step.hint || '&nbsp;';
+        this.tutorialHint.style.display = step.hint ? 'block' : 'none';
+
+        // Progress dots
+        let dots = '';
+        for (let i = 0; i < total; i++) {
+            let cls = 'tutorial-dot';
+            if (i < this.tutorialStep) cls += ' done';
+            else if (i === this.tutorialStep) cls += ' active';
+            dots += `<span class="${cls}"></span>`;
+        }
+        this.tutorialProgress.innerHTML = dots;
+
+        this.tutorialPrev.style.display = this.tutorialStep === 0 ? 'none' : '';
+        const isLast = this.tutorialStep === total - 1;
+        this.tutorialNext.textContent = isLast ? '开始冒险！' : '下一步';
+        this.tutorialSkip.textContent = this.tutorialStep === 0 ? '跳过教程' : '跳过剩余';
+    }
+
+    hideTutorial() {
+        if (this.tutorialOverlay) {
+            this.tutorialOverlay.classList.remove('active');
+        }
+        if (this.tutorialCallback) {
+            const cb = this.tutorialCallback;
+            this.tutorialCallback = null;
+            cb();
+        }
     }
 }
