@@ -106,8 +106,7 @@ class Game {
         this.delayedEffects = [];
         // Chain lightning visual arcs
         this.chainLightnings = [];
-
-        this.init();
+        // init() is called after class selection
     }
 
     init(classId = 'human') {
@@ -868,8 +867,7 @@ class Game {
 const gameCanvas = document.getElementById('game-canvas');
 if (gameCanvas) {
     const game = new Game();
-    // Don't auto-init; show class select first
-    game.init('human'); // Pre-init with default
+    // Show loading screen then class selection
     game.renderer.clear();
     game.renderer.drawVignette();
     game.renderer.ctx.fillStyle = '#f1c40f';
@@ -877,9 +875,11 @@ if (gameCanvas) {
     game.renderer.ctx.textAlign = 'center';
     game.renderer.ctx.fillText('加载中...', 512, 384);
     game.renderer.ctx.textAlign = 'start';
-
-    game.ui.showClassSelect((classId) => {
-        game.init(classId);
-        game.start();
+    // Defer class select to next frame to ensure DOM ready
+    requestAnimationFrame(() => {
+        game.ui.showClassSelect((classId) => {
+            game.init(classId);
+            game.start();
+        });
     });
 }

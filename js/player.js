@@ -28,17 +28,19 @@ export class Player {
         this.attackRange = bs.attackRange;
         this.attackSpeed = bs.attackSpeed;
         this.statGrowth = classDef.statGrowth;
-        this.hp = this.maxHp;
-        this.mp = this.maxMp;
 
-        // Equipment (7 slots)
+        // Equipment (7 slots) - MUST be before hp/mp getters
         this.equipment = { weapon: null, helmet: null, armor: null, boots: null, gloves: null, amulet: null, ring: null };
         this.inventory = [];
 
-        // Skills
+        // Skills - MUST be before hp/mp getters
         this.skills = [];         // Active skills
         this.passives = [];       // Passive skills
         this.skillCooldowns = {};
+
+        // Now safe to call getters
+        this.hp = this.maxHp;
+        this.mp = this.maxMp;
 
         // Passive states
         this.cheatDeathCooldown = 0;
