@@ -490,8 +490,20 @@ export class UI {
         const input = document.getElementById('chat-input');
         const text = input.value.trim();
         if (!text || !this._chat) return;
-        this._chat.sendChat(text);
-        input.value = '';
+        const result = this._chat.sendChat(text);
+        if (result.blocked) {
+            input.style.borderColor = '#e74c3c';
+            input.style.background = '#2a1a1a';
+            setTimeout(() => {
+                input.style.borderColor = '#444';
+                input.style.background = '#1a1a2e';
+            }, 1500);
+            input.value = '⚠ ' + result.reason;
+            input.select();
+            setTimeout(() => { input.value = ''; }, 2000);
+        } else {
+            input.value = '';
+        }
         this._renderChat();
     }
 
