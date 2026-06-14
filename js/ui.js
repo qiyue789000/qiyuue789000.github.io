@@ -32,8 +32,7 @@ export class UI {
             if (e.code === 'KeyI') this.toggleInventory();
             if (e.code === 'KeyP') this.toggleProfile();
             if (e.code === 'KeyT') this.toggleSkillList();
-            if (e.code === 'KeyO') this.toggleSettings();
-            if (e.code === 'F1') this.toggleSettings();
+            if (e.code === 'Backquote') this.toggleSettings();
             if (e.code === 'Enter' && !e.target.closest('#chat-input') && !e.target.closest('#settings-panel')) {
                 e.preventDefault();
                 this.toggleChat();
@@ -99,12 +98,16 @@ export class UI {
                 </div>
                 <span style="font-size:16px;color:#f1c40f;">🪙${player.gold}</span>
             </div>
+            <div style="margin-top:2px;">
+                <div class="xp-bar-bg"><div class="xp-bar-fill" style="width:${xpPct}%"></div></div>
+                <span style="font-size:11px;color:#f1c40f;">⭐ ${player.xp}/${player.xpToNext} (${xpPct.toFixed(0)}%)</span>
+            </div>
             <div style="margin-top:3px;font-size:13px;color:#ccc;">
                 ⚔${player.atk} 🛡${player.def} 💨${Math.floor(player.spd)} 💥${Math.floor(player.crit*100)}%
                 <span style="margin-left:8px;">${skillsHtml || ''}</span>
             </div>
             <div style="font-size:11px;color:#888;margin-top:2px;">
-                WASD移 右键寻 J攻 空格闪 Q药 I包 BNM技 E店 T技能 F1设置
+                WASD移 右键寻 J攻 空格闪 Q药 I包 BNM技 E店 T技能 ~设置
             </div>
             ${currentRoom && currentRoom.type === 'shop' ? '<div style="font-size:14px;color:#f1c40f;animation:pulse 1s infinite;">🏪 按 [E] 打开商店</div>' : ''}
         `;
