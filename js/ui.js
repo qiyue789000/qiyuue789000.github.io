@@ -31,6 +31,7 @@ export class UI {
         document.addEventListener('keydown', (e) => {
             if (e.code === 'KeyI') this.toggleInventory();
             if (e.code === 'KeyP') this.toggleProfile();
+            if (e.code === 'KeyT') this.toggleSkillList();
             if (e.code === 'KeyO') this.toggleSettings();
             if (e.code === 'F1') this.toggleSettings();
             if (e.code === 'Enter' && !e.target.closest('#chat-input') && !e.target.closest('#settings-panel')) {
@@ -85,27 +86,27 @@ export class UI {
         const classIcon = player.classDef ? player.classDef.icon : '⚔️';
         const className = player.classDef ? player.classDef.name : '冒险者';
         this.hudEl.innerHTML = `
-            <div style="font-size:20px;font-weight:bold;margin-bottom:4px;">
+            <div style="font-size:22px;font-weight:bold;margin-bottom:4px;color:#fff;">
                 ${classIcon} ${className} <span style="color:#f1c40f;">Lv.${player.level}</span>
-                <span style="font-size:11px;color:#888;"> B${dungeon.floor}</span>
+                <span style="font-size:13px;color:#ccc;"> B${dungeon.floor}</span>
             </div>
             <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-                <div style="flex:1;min-width:140px;">
+                <div style="flex:1;min-width:150px;">
                     <div class="hp-bar-bg"><div class="hp-bar-fill" style="width:${hpPct}%"></div><span class="bar-label">❤ ${Math.floor(player.hp)}/${player.maxHp}</span></div>
                 </div>
-                <div style="flex:1;min-width:140px;">
+                <div style="flex:1;min-width:150px;">
                     <div class="mp-bar-bg"><div class="mp-bar-fill" style="width:${mpPct}%"></div><span class="bar-label">💎 ${Math.floor(player.mp)}/${player.maxMp}</span></div>
                 </div>
-                <span style="font-size:13px;color:#f1c40f;">🪙${player.gold}</span>
+                <span style="font-size:16px;color:#f1c40f;">🪙${player.gold}</span>
             </div>
-            <div style="margin-top:2px;font-size:11px;color:#aaa;">
+            <div style="margin-top:3px;font-size:13px;color:#ccc;">
                 ⚔${player.atk} 🛡${player.def} 💨${Math.floor(player.spd)} 💥${Math.floor(player.crit*100)}%
-                <span style="margin-left:8px;font-size:12px;">${skillsHtml || ''}</span>
+                <span style="margin-left:8px;">${skillsHtml || ''}</span>
             </div>
-            <div style="font-size:10px;color:#555;margin-top:2px;">
-                [WASD]移 [右键]寻 [左键/J]攻 [空格]闪 [Q]药 [I]包 [B/N/M]技 [E]店 [F5]存 [F9]读 [F1]设置
+            <div style="font-size:11px;color:#888;margin-top:2px;">
+                WASD移 右键寻 J攻 空格闪 Q药 I包 BNM技 E店 T技能 F1设置
             </div>
-            ${currentRoom && currentRoom.type === 'shop' ? '<div style="font-size:13px;color:#f1c40f;animation:pulse 1s infinite;">🏪 按 [E] 打开商店</div>' : ''}
+            ${currentRoom && currentRoom.type === 'shop' ? '<div style="font-size:14px;color:#f1c40f;animation:pulse 1s infinite;">🏪 按 [E] 打开商店</div>' : ''}
         `;
 
         this.updateEquipBar(player);
@@ -535,6 +536,59 @@ export class UI {
         this._player = player;
     }
 
+    // ─── Skill List ────────────────────────────────
+    toggleSkillList() {
+        const panel = document.getElementById('skill-list-panel');
+        if (panel && panel.classList.contains('active')) this.hideSkillList();
+        else this.showSkillList();
+    }
+
+    showSkillList() {
+        const panel = document.getElementById('skill-list-panel');
+        if (!panel || !this._player) return;
+        const p = this._player;
+        let html = '';
+        // Active skills
+        html += '<div class="skill-section">⚔️ 主动技能</div>';
+        if (p.skills.length > 0) {
+            for (let i = 0; i < p.skills.length; i++) {
+                const s = p.skills[i];
+                const key = i < 3 ? ['B','N','M'][i] : (i+1);
+                const cd = p.skillCooldowns[s.name] || 0;
+                html += `<div class="skill-entry">
+                    <span class="skill-name">[${key}] ${s.icon} ${s.name}</span>
+                    <span class="skill-cost">耗${s.cost}魔</span>
+                    <span class="skill-cd">CD${s.cd}s${cd>0?' ('+cd.toFixed(1)+'s)':''}</span>
+                </div>
+                <div class="skill-desc" style="margin-left:20px;">${s.desc}</div>`;
+            }
+        } else {
+            html += '<div style="color:#666;">暂无技能</div>';
+        }
+        // Passive skills
+        html += '<div class="skill-section">🛡️ 被动技能</div>';
+        if (p.passives.length > 0) {
+            for (const ps of p.passives) {
+                html += `<div class="skill-entry">
+                    <span class="skill-name">${ps.icon} ${ps.name}</span>
+                    <span style="color:#2ecc71;font-size:11px;">Lv.${ps.level}解锁</span>
+                </div>
+                <div class="skill-desc" style="margin-left:20px;">${ps.desc}</div>`;
+            }
+        } else {
+            html += '<div style="color:#666;">暂无被动</div>';
+        }
+
+        document.getElementById('skill-list-content').innerHTML = html;
+        panel.classList.add('active');
+        document.getElementById('skill-list-close').onclick = () => this.hideSkillList();
+    }
+
+    hideSkillList() {
+        const panel = document.getElementById('skill-list-panel');
+        if (panel) panel.classList.remove('active');
+    }
+
     // ─── Settings Panel ────────────────────────────
     toggleSettings() {
         if (this.settingsPanel && this.settingsPanel.classList.contains('active')) {
@@ -548,18 +602,6 @@ export class UI {
         if (!this.settingsPanel) return;
         this.settingsPanel.classList.add('active');
         document.getElementById('settings-close').onclick = () => this.hideSettings();
-        document.getElementById('settings-reset-tutorial').onclick = () => {
-            localStorage.removeItem('roguelike_tutorial_done');
-            this._flashNotify('📖 下次开局将显示教程');
-            this.hideSettings();
-        };
-        document.getElementById('settings-delete-save').onclick = () => {
-            if (confirm('确定要删除存档吗？')) {
-                localStorage.removeItem('roguelike_save');
-                this._flashNotify('🗑️ 存档已删除');
-                this.hideSettings();
-            }
-        };
     }
 
     hideSettings() {

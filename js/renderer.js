@@ -74,12 +74,12 @@ export class Renderer {
 
             if (!room.visited) continue;
 
-            // Room floor
-            let floorColor = '#1a1a2e';
-            if (room.type === ROOM_TYPES.START) floorColor = '#1a2e1a';
-            else if (room.type === ROOM_TYPES.BOSS) floorColor = '#2e1a1a';
-            else if (room.type === ROOM_TYPES.TREASURE) floorColor = '#2e2a1a';
-            else if (room.type === ROOM_TYPES.SHOP) floorColor = '#1a2e2e';
+            // Room floor - brighter distinct colors
+            let floorColor = '#1e2a3a';
+            if (room.type === ROOM_TYPES.START) floorColor = '#1e3a2e';
+            else if (room.type === ROOM_TYPES.BOSS) floorColor = '#3a1e1e';
+            else if (room.type === ROOM_TYPES.TREASURE) floorColor = '#3a3520';
+            else if (room.type === ROOM_TYPES.SHOP) floorColor = '#1e3a3a';
 
             ctx.fillStyle = floorColor;
             ctx.fillRect(rx, ry, room.pw, room.ph);
