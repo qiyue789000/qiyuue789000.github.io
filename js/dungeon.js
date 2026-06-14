@@ -1,11 +1,11 @@
 import { rand, choice, dist } from './utils.js';
 
 const TILE = 32;
-const GRID_COLS = 6;
-const GRID_ROWS = 6;
-const ROOM_SPACING = 340; // pixels between grid cells (fits max 9-tile room + corridor space)
-const MIN_ROOM_SIZE = 5; // in tiles
-const MAX_ROOM_SIZE = 5;
+const GRID_COLS = 4;
+const GRID_ROWS = 4;
+const ROOM_SPACING = 380;
+const MIN_ROOM_SIZE = 7;
+const MAX_ROOM_SIZE = 10;
 
 export const ROOM_TYPES = {
     START:    'start',
@@ -74,8 +74,8 @@ export class Dungeon {
         for (let gy = 0; gy < GRID_ROWS; gy++) {
             grid[gy] = [];
             for (let gx = 0; gx < GRID_COLS; gx++) {
-                // Randomly skip some grid cells
-                if (Math.random() < 0.25) {
+                // Skip ~40% of grid cells for open exploration feel
+                if (Math.random() < 0.45) {
                     grid[gy][gx] = null;
                     continue;
                 }
@@ -192,117 +192,12 @@ export class Dungeon {
     }
 
     calculateWalls() {
-        // Build a bitmap of walkable tiles
+        // Exploration mode: no walls, everything is walkable
         const cols = Math.ceil(this.pixelWidth / TILE);
         const rows = Math.ceil(this.pixelHeight / TILE);
-        const walkable = Array.from({ length: rows }, () => Array(cols).fill(false));
-
-        // Mark rooms as walkable (with 1-tile border as wall)
-        for (const room of this.rooms) {
-            const rx = Math.floor(room.px / TILE);
-            const ry = Math.floor(room.py / TILE);
-            const rw = Math.floor(room.pw / TILE);
-            const rh = Math.floor(room.ph / TILE);
-            // Interior is walkable
-            for (let y = ry + 1; y < ry + rh - 1; y++) {
-                for (let x = rx + 1; x < rx + rw - 1; x++) {
-                    if (y >= 0 && y < rows && x >= 0 && x < cols) {
-                        walkable[y][x] = true;
-                    }
-                }
-            }
-            // Door openings
-            if (room.doors.top) {
-                const dx = Math.floor(room.cx / TILE);
-                const dy = ry;
-                if (dy >= 0 && dy < rows && dx >= 0 && dx < cols) walkable[dy][dx] = true;
-                if (dy + 1 < rows) walkable[dy + 1][dx] = true;
-            }
-            if (room.doors.bottom) {
-                const dx = Math.floor(room.cx / TILE);
-                const dy = ry + rh - 2;
-                if (dy >= 0 && dy < rows && dx >= 0 && dx < cols) walkable[dy][dx] = true;
-                if (dy + 1 < rows) walkable[dy + 1][dx] = true;
-            }
-            if (room.doors.left) {
-                const dx = rx;
-                const dy = Math.floor(room.cy / TILE);
-                if (dy >= 0 && dy < rows && dx >= 0 && dx < cols) walkable[dy][dx] = true;
-                if (dx + 1 < cols) walkable[dy][dx + 1] = true;
-            }
-            if (room.doors.right) {
-                const dx = rx + rw - 2;
-                const dy = Math.floor(room.cy / TILE);
-                if (dy >= 0 && dy < rows && dx >= 0 && dx < cols) walkable[dy][dx] = true;
-                if (dx + 1 < cols) walkable[dy][dx + 1] = true;
-            }
-        }
-
-        // Mark corridors as walkable
-        for (const cor of this.corridors) {
-            const sx = Math.floor(Math.min(cor.x1, cor.x2) / TILE);
-            const ex = Math.floor(Math.max(cor.x1, cor.x2) / TILE);
-            const sy = Math.floor(Math.min(cor.y1, cor.y2) / TILE);
-            const ey = Math.floor(Math.max(cor.y1, cor.y2) / TILE);
-            for (let y = sy; y <= ey; y++) {
-                for (let x = sx; x <= ex; x++) {
-                    if (y >= 0 && y < rows && x >= 0 && x < cols) {
-                        walkable[y][x] = true;
-                    }
-                }
-            }
-        }
-
-        // Extract wall rects (adjacent non-walkable tiles grouped)
+        const walkable = Array.from({ length: rows }, () => Array(cols).fill(true));
         this.walkableGrid = walkable;
-
-        // For collision, generate wall segments from room perimeters with door gaps
         this.wallRects = [];
-        for (const room of this.rooms) {
-            const rx = room.px, ry = room.py, rw = room.pw, rh = room.ph;
-            const wt = 8; // wall thickness
-            const doorW = 32; // door opening width
-            const doorCenterX = room.cx;
-            const doorCenterY = room.cy;
-
-            // Top wall
-            if (room.doors.top) {
-                const leftW = doorCenterX - doorW / 2 - rx;
-                const rightStart = doorCenterX + doorW / 2;
-                if (leftW > 0) this.wallRects.push({ x: rx, y: ry, w: leftW, h: wt });
-                if (rightStart < rx + rw) this.wallRects.push({ x: rightStart, y: ry, w: rx + rw - rightStart, h: wt });
-            } else {
-                this.wallRects.push({ x: rx, y: ry, w: rw, h: wt });
-            }
-            // Bottom wall
-            if (room.doors.bottom) {
-                const leftW = doorCenterX - doorW / 2 - rx;
-                const rightStart = doorCenterX + doorW / 2;
-                if (leftW > 0) this.wallRects.push({ x: rx, y: ry + rh - wt, w: leftW, h: wt });
-                if (rightStart < rx + rw) this.wallRects.push({ x: rightStart, y: ry + rh - wt, w: rx + rw - rightStart, h: wt });
-            } else {
-                this.wallRects.push({ x: rx, y: ry + rh - wt, w: rw, h: wt });
-            }
-            // Left wall
-            if (room.doors.left) {
-                const topH = doorCenterY - doorW / 2 - ry;
-                const bottomStart = doorCenterY + doorW / 2;
-                if (topH > 0) this.wallRects.push({ x: rx, y: ry, w: wt, h: topH });
-                if (bottomStart < ry + rh) this.wallRects.push({ x: rx, y: bottomStart, w: wt, h: ry + rh - bottomStart });
-            } else {
-                this.wallRects.push({ x: rx, y: ry, w: wt, h: rh });
-            }
-            // Right wall
-            if (room.doors.right) {
-                const topH = doorCenterY - doorW / 2 - ry;
-                const bottomStart = doorCenterY + doorW / 2;
-                if (topH > 0) this.wallRects.push({ x: rx + rw - wt, y: ry, w: wt, h: topH });
-                if (bottomStart < ry + rh) this.wallRects.push({ x: rx + rw - wt, y: bottomStart, w: wt, h: ry + rh - bottomStart });
-            } else {
-                this.wallRects.push({ x: rx + rw - wt, y: ry, w: wt, h: rh });
-            }
-        }
-
     }
 
     getRoomAt(x, y) {

@@ -75,31 +75,27 @@ export class UI {
         const classIcon = player.classDef ? player.classDef.icon : '⚔️';
         const className = player.classDef ? player.classDef.name : '冒险者';
         this.hudEl.innerHTML = `
-            <div style="font-size:18px;font-weight:bold;">${classIcon} ${className} Lv.${player.level}</div>
-            <div style="font-size:12px;color:#888;">地下 ${dungeon.floor} 层</div>
-            <div style="margin-top:3px;">
-                <div class="hp-bar-bg"><div class="hp-bar-fill" style="width:${hpPct}%"></div></div>
-                <span style="font-size:10px;color:#e74c3c;">❤️ ${Math.floor(player.hp)}/${player.maxHp}</span>
+            <div style="font-size:20px;font-weight:bold;margin-bottom:4px;">
+                ${classIcon} ${className} <span style="color:#f1c40f;">Lv.${player.level}</span>
+                <span style="font-size:11px;color:#888;"> B${dungeon.floor}</span>
             </div>
-            <div style="margin-top:1px;">
-                <div class="mp-bar-bg"><div class="mp-bar-fill" style="width:${mpPct}%"></div></div>
-                <span style="font-size:10px;color:#3498db;">💎 ${Math.floor(player.mp)}/${player.maxMp} (${player.mpRegen.toFixed(1)}/秒)</span>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                <div style="flex:1;min-width:140px;">
+                    <div class="hp-bar-bg"><div class="hp-bar-fill" style="width:${hpPct}%"></div><span class="bar-label">❤ ${Math.floor(player.hp)}/${player.maxHp}</span></div>
+                </div>
+                <div style="flex:1;min-width:140px;">
+                    <div class="mp-bar-bg"><div class="mp-bar-fill" style="width:${mpPct}%"></div><span class="bar-label">💎 ${Math.floor(player.mp)}/${player.maxMp}</span></div>
+                </div>
+                <span style="font-size:13px;color:#f1c40f;">🪙${player.gold}</span>
             </div>
-            <div style="margin-top:1px;">
-                <div class="xp-bar-bg"><div class="xp-bar-fill" style="width:${xpPct}%"></div></div>
-                <span style="font-size:10px;color:#f1c40f;">⭐ ${player.xp}/${player.xpToNext}</span>
+            <div style="margin-top:2px;font-size:11px;color:#aaa;">
+                ⚔${player.atk} 🛡${player.def} 💨${Math.floor(player.spd)} 💥${Math.floor(player.crit*100)}%
+                <span style="margin-left:8px;font-size:12px;">${skillsHtml || ''}</span>
             </div>
-            <div style="font-size:10px;color:#888;margin-top:3px;">
-                ⚔${player.atk} 🛡${player.def} 💨${Math.floor(player.spd)} 💥${Math.floor(player.crit*100)}% 🪙${player.gold}
+            <div style="font-size:10px;color:#555;margin-top:2px;">
+                [WASD]移 [右键]寻路 [左键/J]攻 [空格]闪 [Q]药 [I]包 [B/N/M]技 [E]店 [F5]存 [F9]读
             </div>
-            <div style="font-size:9px;color:#666;margin-top:2px;">
-                ${skillsHtml || '暂无技能'}
-            </div>
-            ${passivesHtml ? `<div style="margin-top:1px;">${passivesHtml}</div>` : ''}
-            <div style="font-size:9px;color:#444;margin-top:1px;">
-                [WASD]移 [右键]寻路 [左键/J]攻 [空格]闪 [Q]药 [I]包 [B/N/M]技 [E]店 [P]档 [回车]聊
-            </div>
-            ${currentRoom && currentRoom.type === 'shop' ? '<div style="font-size:13px;color:#f1c40f;margin-top:3px;animation:pulse 1s infinite;">🏪 按 [E] 打开商店</div>' : ''}
+            ${currentRoom && currentRoom.type === 'shop' ? '<div style="font-size:13px;color:#f1c40f;animation:pulse 1s infinite;">🏪 按 [E] 打开商店</div>' : ''}
         `;
 
         this.updateEquipBar(player);
@@ -385,6 +381,24 @@ export class UI {
 
     setProfileManager(profile) { this._profile = profile; }
     setChatService(chat) { this._chat = chat; }
+
+    showSaveConfirm() {
+        this._flashNotify('💾 游戏已保存');
+    }
+    showLoadConfirm() {
+        this._flashNotify('📂 存档已加载');
+    }
+    _flashNotify(msg) {
+        const el = document.getElementById('level-up-notify');
+        el.textContent = msg;
+        el.style.opacity = '1';
+        el.style.color = '#2ecc71';
+        if (this.levelUpTimeout) clearTimeout(this.levelUpTimeout);
+        this.levelUpTimeout = setTimeout(() => {
+            el.style.opacity = '0';
+            el.style.color = '#f1c40f';
+        }, 1200);
+    }
 
     // ─── Profile Panel ─────────────────────────────
     toggleProfile() {

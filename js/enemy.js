@@ -196,11 +196,13 @@ export function createSlime(x, y, floor = 1) {
         def: Math.floor(1 * scale),
         spd: 40 + floor * 2,
         xpReward: Math.floor(8 * scale),
-        attackRange: 28,
-        chaseRange: 150,
-        attackSpeed: 2.0,
-        radius: 10,
-        color: '#4ecb71'
+        attackRange: 42,
+        chaseRange: 220,
+        attackSpeed: 1.8,
+        radius: 16,
+        color: '#4ecb71',
+        attackRange: 36,
+        chaseRange: 200
     });
 }
 
@@ -214,10 +216,10 @@ export function createSkeleton(x, y, floor = 1) {
         def: Math.floor(3 * scale),
         spd: 65 + floor * 2,
         xpReward: Math.floor(20 * scale),
-        attackRange: 35,
-        chaseRange: 200,
-        attackSpeed: 1.3,
-        radius: 13,
+        attackRange: 48,
+        chaseRange: 240,
+        attackSpeed: 1.2,
+        radius: 16,
         color: '#ddd'
     });
 }
@@ -232,10 +234,10 @@ export function createShadowMage(x, y, floor = 1) {
         def: Math.floor(2 * scale),
         spd: 50 + floor * 2,
         xpReward: Math.floor(25 * scale),
-        attackRange: 150,
-        chaseRange: 250,
-        attackSpeed: 2.5,
-        radius: 12,
+        attackRange: 170,
+        chaseRange: 280,
+        attackSpeed: 2.3,
+        radius: 15,
         color: '#9b59b6',
         isRanged: true,
         projectileSpeed: 180,
@@ -253,10 +255,10 @@ export function createStoneGolem(x, y, floor = 1) {
         def: Math.floor(8 * scale),
         spd: 30 + floor,
         xpReward: Math.floor(50 * scale),
-        attackRange: 38,
-        chaseRange: 180,
-        attackSpeed: 2.8,
-        radius: 18,
+        attackRange: 50,
+        chaseRange: 220,
+        attackSpeed: 2.5,
+        radius: 20,
         color: '#888'
     });
 }
@@ -271,10 +273,10 @@ export function createBoss(x, y, floor = 1) {
         def: Math.floor(6 * scale),
         spd: 50 + floor * 3,
         xpReward: Math.floor(200 * scale),
-        attackRange: 50,
-        chaseRange: 400,
-        attackSpeed: 1.5,
-        radius: 24,
+        attackRange: 60,
+        chaseRange: 450,
+        attackSpeed: 1.3,
+        radius: 28,
         color: '#e74c3c',
         isBoss: true
     });
@@ -290,7 +292,7 @@ export function spawnEnemiesForRoom(room, floor) {
 
     switch (room.type) {
         case 'battle': {
-            const count = floor === 1 ? rand(1, 2) : rand(2, 3 + Math.floor(floor / 3));
+            const count = floor === 1 ? rand(1, 2) : rand(1, 2 + Math.floor(floor / 4));
             for (let i = 0; i < count; i++) {
                 const p = room.randomPosition;
                 const roll = Math.random();

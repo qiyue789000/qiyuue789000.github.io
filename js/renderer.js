@@ -124,18 +124,10 @@ export class Renderer {
             }
         }
 
-        // Draw corridors
-        ctx.strokeStyle = '#2a2a1a';
-        ctx.lineWidth = 20;
-        ctx.lineCap = 'round';
-        for (const cor of dungeon.corridors) {
-            ctx.beginPath();
-            ctx.moveTo(cor.x1 - cx, cor.y1 - cy);
-            ctx.lineTo(cor.x2 - cx, cor.y2 - cy);
-            ctx.stroke();
-        }
-        ctx.lineWidth = 16;
+        // Draw corridors (wider for open exploration)
         ctx.strokeStyle = '#1a1a2e';
+        ctx.lineWidth = 32;
+        ctx.lineCap = 'round';
         for (const cor of dungeon.corridors) {
             ctx.beginPath();
             ctx.moveTo(cor.x1 - cx, cor.y1 - cy);

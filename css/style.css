@@ -39,36 +39,51 @@ canvas {
 }
 
 .hp-bar-bg {
-    width: 200px; height: 16px;
-    background: #333;
-    border: 1px solid #555;
-    margin: 4px 0;
+    position: relative;
+    height: 18px;
+    background: #2a1111;
+    border: 1px solid #4a2222;
+    border-radius: 2px;
+    overflow: hidden;
 }
 .hp-bar-fill {
     height: 100%;
-    background: linear-gradient(180deg, #e74c3c, #c0392b);
+    background: linear-gradient(90deg, #c0392b, #e74c3c);
     transition: width 0.3s;
 }
+.bar-label {
+    position: absolute;
+    top: 0; left: 6px;
+    line-height: 18px;
+    font-size: 10px;
+    color: #fff;
+    text-shadow: 1px 1px 1px #000;
+}
 .mp-bar-bg {
-    width: 200px; height: 8px;
-    background: #1a2a3a;
-    border: 1px solid #34495e;
-    margin: 1px 0;
+    position: relative;
+    height: 14px;
+    background: #111a2a;
+    border: 1px solid #223344;
+    border-radius: 2px;
+    overflow: hidden;
+    margin-top: 2px;
 }
 .mp-bar-fill {
     height: 100%;
-    background: linear-gradient(180deg, #3498db, #2980b9);
+    background: linear-gradient(90deg, #2471a3, #3498db);
     transition: width 0.3s;
 }
 .xp-bar-bg {
-    width: 200px; height: 8px;
+    width: 200px; height: 6px;
     background: #222;
     border: 1px solid #444;
     margin: 2px 0;
+    border-radius: 2px;
+    overflow: hidden;
 }
 .xp-bar-fill {
     height: 100%;
-    background: linear-gradient(180deg, #f1c40f, #f39c12);
+    background: linear-gradient(90deg, #f39c12, #f1c40f);
     transition: width 0.3s;
 }
 

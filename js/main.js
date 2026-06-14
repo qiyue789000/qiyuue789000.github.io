@@ -530,6 +530,12 @@ class Game {
             }
         }
 
+        // Save/Load hotkeys
+        if (justPressed['F5']) this.saveGame();
+        if (justPressed['F9'] && Game.hasSave()) {
+            if (this.loadGame()) this.start();
+        }
+
         // Right-click auto-move
         if (this.input.mouse._justRightClicked) {
             this.player.autoMoveTarget = {
@@ -610,6 +616,106 @@ class Game {
                 }
             }
         }
+    }
+
+    // ─── Save / Load ───
+    saveGame() {
+        const data = {
+            classId: this.classId || 'human',
+            floor: this.dungeon.floor,
+            player: {
+                x: this.player.x, y: this.player.y,
+                level: this.player.level, xp: this.player.xp, gold: this.player.gold,
+                hp: this.player.hp, mp: this.player.mp,
+                equipment: this.player.equipment,
+                inventory: this.player.inventory,
+                skills: this.player.skills,
+                passives: this.player.passives,
+                skillCooldowns: this.player.skillCooldowns
+            },
+            dungeon: {
+                startRoom: { px: this.dungeon.startRoom.px, py: this.dungeon.startRoom.py, pw: this.dungeon.startRoom.pw, ph: this.dungeon.startRoom.ph },
+                bossRoom: this.dungeon.bossRoom ? { px: this.dungeon.bossRoom.px, py: this.dungeon.bossRoom.py, pw: this.dungeon.bossRoom.pw, ph: this.dungeon.bossRoom.ph } : null,
+                rooms: this.dungeon.rooms.map(r => ({
+                    px: r.px, py: r.py, pw: r.pw, ph: r.ph,
+                    type: r.type, cleared: r.cleared, visited: r.visited, id: r.id
+                }))
+            },
+            groundItems: this.groundItems.map(gi => ({ x: gi.x, y: gi.y, item: gi.item })),
+            timestamp: Date.now()
+        };
+        localStorage.setItem('roguelike_save', JSON.stringify(data));
+        this.ui.showSaveConfirm();
+    }
+
+    loadGame() {
+        const raw = localStorage.getItem('roguelike_save');
+        if (!raw) return false;
+        try {
+            const data = JSON.parse(raw);
+            // Restore dungeon
+            this.dungeon = new Dungeon(data.floor);
+            // Restore room states
+            for (const savedRoom of data.dungeon.rooms) {
+                const room = this.dungeon.rooms.find(r => r.id === savedRoom.id);
+                if (room) {
+                    room.type = savedRoom.type;
+                    room.cleared = savedRoom.cleared;
+                    room.visited = savedRoom.visited;
+                }
+            }
+            // Restore player
+            this.player = new Player(data.player.x, data.player.y, data.classId);
+            const p = this.player;
+            p.level = data.player.level;
+            p.xp = data.player.xp;
+            p.gold = data.player.gold;
+            p.hp = data.player.hp;
+            p.mp = data.player.mp;
+            p.equipment = data.player.equipment;
+            p.inventory = data.player.inventory;
+            p.skills = data.player.skills;
+            p.passives = data.player.passives;
+            p.skillCooldowns = data.player.skillCooldowns || {};
+            for (const key of Object.keys(p.skillCooldowns)) {
+                p.skillCooldowns[key] = 0;
+            }
+            // Restore ground items
+            this.groundItems = (data.groundItems || []).map(gi => ({ x: gi.x, y: gi.y, item: gi.item }));
+            // Reset runtime state
+            this.enemies = [];
+            this.allProjectiles = [];
+            this.clones = [];
+            this.delayedEffects = [];
+            this.chainLightnings = [];
+            this._playerProjectiles = [];
+            this.damageNumbers = [];
+            this.gameOver = false;
+            this.currentRoom = this.dungeon.getRoomAt(p.x, p.y) || this.dungeon.startRoom;
+            if (this.currentRoom) this.dungeon.currentRoom = this.currentRoom;
+            this.ui.hideGameOver();
+            this.ui.setPlayerRef(p);
+            this.ui.showFloorIndicator(data.floor);
+            this.ui.showLoadConfirm();
+            // Profile
+            if (!this.profile) {
+                this.profile = new ProfileManager('');
+                this.chat = new ChatService('冒险者');
+                this.ui.setProfileManager(this.profile);
+                this.ui.setChatService(this.chat);
+            }
+            this.profile.startRun(data.classId);
+            this.enemiesKilledCount = 0;
+            this.bossesKilledCount = 0;
+            this.playTime = 0;
+            return true;
+        } catch (e) {
+            return false;
+        }
+    }
+
+    static hasSave() {
+        return !!localStorage.getItem('roguelike_save');
     }
 
     spawnClones(count, duration) {
@@ -758,6 +864,7 @@ class Game {
         this.dungeon.startRoom.visited = true;
         this.dungeon.currentRoom = this.dungeon.startRoom;
         this.ui.showFloorIndicator(nextFloor);
+        this.saveGame(); // Auto-save on floor transition
 
         // Heal 20% HP and 40% MP on floor transition
         this.player.hp = Math.min(this.player.maxHp, this.player.hp + Math.floor(this.player.maxHp * 0.2));
